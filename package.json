@@ -1,0 +1,39 @@
+{
+  "name": "finance-pdf-to-excel-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@auth/mongodb-adapter": "^3.10.0",
+    "@stripe/stripe-js": "^7.4.0",
+    "axios": "^1.10.0",
+    "bcryptjs": "^3.0.2",
+    "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "lucide-react": "^0.525.0",
+    "mongodb": "^6.17.0",
+    "mongoose": "^8.16.2",
+    "multer": "^2.0.1",
+    "next": "15.3.5",
+    "next-auth": "^4.24.11",
+    "pdf-parse": "^1.1.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-hot-toast": "^2.5.2",
+    "stripe": "^18.3.0",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "eslint": "^9",
+    "eslint-config-next": "15.3.5",
+    "tailwindcss": "^4"
+  }
+}
