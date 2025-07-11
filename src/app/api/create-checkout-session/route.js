@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../../../lib/auth';
-import { stripe, SUBSCRIPTION_PLANS } from '../../../lib/stripe';
+import { getStripe, SUBSCRIPTION_PLANS } from '../../../lib/stripe';
 
 export async function POST(request) {
   try {
@@ -18,6 +18,7 @@ export async function POST(request) {
     }
 
     const plan = SUBSCRIPTION_PLANS[planId];
+    const stripe = await getStripe();
 
     // Create Stripe checkout session
     const checkoutSession = await stripe.checkout.sessions.create({

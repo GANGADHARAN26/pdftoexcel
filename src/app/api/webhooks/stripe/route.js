@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { stripe } from '../../../../lib/stripe';
+import { getStripe } from '../../../../lib/stripe';
 import { connectToMongoDB } from '../../../../lib/mongoose';
 import User from '../../../../models/User';
 
@@ -10,6 +10,7 @@ export async function POST(request) {
   let event;
 
   try {
+    const stripe = await getStripe();
     event = stripe.webhooks.constructEvent(
       body,
       signature,
@@ -52,6 +53,7 @@ export async function POST(request) {
 }
 
 async function handleCheckoutSessionCompleted(session) {
+  const stripe = await getStripe();
   const userId = session.metadata.userId;
   const subscription = await stripe.subscriptions.retrieve(session.subscription);
   
@@ -64,6 +66,7 @@ async function handleCheckoutSessionCompleted(session) {
 }
 
 async function handleInvoicePaymentSucceeded(invoice) {
+  const stripe = await getStripe();
   const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
   const customer = await stripe.customers.retrieve(subscription.customer);
   
@@ -78,6 +81,7 @@ async function handleInvoicePaymentSucceeded(invoice) {
 }
 
 async function handleSubscriptionUpdated(subscription) {
+  const stripe = await getStripe();
   const customer = await stripe.customers.retrieve(subscription.customer);
   const user = await User.findOne({ email: customer.email });
   
@@ -90,6 +94,7 @@ async function handleSubscriptionUpdated(subscription) {
 }
 
 async function handleSubscriptionDeleted(subscription) {
+  const stripe = await getStripe();
   const customer = await stripe.customers.retrieve(subscription.customer);
   const user = await User.findOne({ email: customer.email });
   
