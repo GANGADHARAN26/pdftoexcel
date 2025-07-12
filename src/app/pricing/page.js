@@ -106,18 +106,18 @@ export default function PricingPage() {
                   Can I cancel my subscription anytime?
                 </h3>
                 <p className="text-gray-600">
-                  Yes, you can cancel your subscription at any time. You'll continue to have 
+                  Yes, you can cancel your subscription at any time. You&apos;ll continue to have 
                   access to premium features until your current billing period ends.
                 </p>
               </div>
 
               <div className="bg-white rounded-lg p-6 shadow-sm">
                 <h3 className="font-semibold text-gray-900 mb-2">
-                  What if the conversion doesn't work correctly?
+                  What if the conversion doesn&apos;t work correctly?
                 </h3>
                 <p className="text-gray-600">
-                  We're continuously improving our algorithms. If a file doesn't convert to your 
-                  expectations, please contact us and we'll work to fix it.
+                  We&apos;re continuously improving our algorithms. If a file doesn&apos;t convert to your 
+                  expectations, please contact us and we&apos;ll work to fix it.
                 </p>
               </div>
             </div>
@@ -127,7 +127,7 @@ export default function PricingPage() {
         {/* CTA Section */}
         <div className="mt-20 text-center">
           <h2 className="text-3xl font-bold text-gray-900 mb-4">
-            Need More Than What's Listed?
+            Need More Than What&apos;s Listed?
           </h2>
           <p className="text-lg text-gray-600 mb-8">
             We provide bespoke services for clients who have other document formats to process

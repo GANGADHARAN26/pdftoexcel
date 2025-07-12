@@ -79,7 +79,7 @@ export default function DashboardPage() {
             <div className="bg-white rounded-lg p-6 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Today's Usage</p>
+                  <p className="text-sm font-medium text-gray-600">Today&apos;s Usage</p>
                   <p className="text-2xl font-bold text-gray-900">
                     {userStats.usage.today}
                   </p>

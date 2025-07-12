@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import { Menu, X, FileText, User, LogOut } from 'lucide-react';
 
@@ -40,9 +41,11 @@ export default function Header() {
             {session ? (
               <div className="flex items-center space-x-4">
                 <div className="flex items-center space-x-2">
-                  <img
-                    src={session.user.image}
-                    alt={session.user.name}
+                  <Image
+                    src={session.user.image || '/default-avatar.png'}
+                    alt={session.user.name || 'User Avatar'}
+                    width={32}
+                    height={32}
                     className="w-8 h-8 rounded-full"
                   />
                   <span className="text-gray-700">{session.user.name}</span>
@@ -95,9 +98,11 @@ export default function Header() {
               {session ? (
                 <div className="flex flex-col space-y-2 pt-4 border-t border-gray-200">
                   <div className="flex items-center space-x-2">
-                    <img
-                      src={session.user.image}
-                      alt={session.user.name}
+                    <Image
+                      src={session.user.image || '/default-avatar.png'}
+                      alt={session.user.name || 'User Avatar'}
+                      width={32}
+                      height={32}
                       className="w-8 h-8 rounded-full"
                     />
                     <span className="text-gray-700">{session.user.name}</span>

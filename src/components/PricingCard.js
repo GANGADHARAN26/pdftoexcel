@@ -112,7 +112,7 @@ export default function PricingCard({
 
       {isCurrentPlan && (
         <p className="text-center text-sm text-gray-500 mt-2">
-          You're currently on this plan
+          You&apos;re currently on this plan
         </p>
       )}
     </div>

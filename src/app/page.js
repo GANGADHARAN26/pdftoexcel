@@ -15,7 +15,7 @@ export default function Home() {
             <span className="text-blue-600"> Instantly</span>
           </h1>
           <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-            The world's most trusted bank statement converter. 
+            The world&apos;s most trusted bank statement converter. 
             Easily convert PDF bank statements from 1000s of banks worldwide into clean Excel format.
           </p>
           
@@ -75,7 +75,7 @@ export default function Home() {
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Institutional</h3>
               <p className="text-gray-600">
-                We've provided our services to thousands of reputable financial, accounting and legal firms.
+                We&apos;ve provided our services to thousands of reputable financial, accounting and legal firms.
               </p>
             </div>
 
@@ -85,7 +85,7 @@ export default function Home() {
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Accurate</h3>
               <p className="text-gray-600">
-                We're continually improving our algorithms. If a file doesn't convert to your expectations, email us and we'll fix it.
+                We&apos;re continually improving our algorithms. If a file doesn&apos;t convert to your expectations, email us and we&apos;ll fix it.
               </p>
             </div>
           </div>
@@ -164,7 +164,7 @@ export default function Home() {
             <span className="text-xl font-bold">FinanceConverter</span>
           </div>
           <p className="text-gray-400 mb-4">
-            The world's most trusted bank statement converter
+            The world&apos;s most trusted bank statement converter
           </p>
           <div className="flex justify-center space-x-6">
             <Link href="/privacy" className="text-gray-400 hover:text-white transition-colors">
