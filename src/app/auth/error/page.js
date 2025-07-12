@@ -2,9 +2,10 @@
 
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { AlertCircle, ArrowLeft } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Loader2 } from 'lucide-react';
+import { Suspense } from 'react';
 
-export default function AuthErrorPage() {
+function AuthErrorContent() {
   const searchParams = useSearchParams();
   const error = searchParams.get('error');
 
@@ -62,5 +63,24 @@ export default function AuthErrorPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function AuthErrorFallback() {
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center py-12 sm:px-6 lg:px-8">
+      <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+      <h2 className="mt-6 text-center text-2xl font-semibold text-gray-700">
+        Loading...
+      </h2>
+    </div>
+  );
+}
+
+export default function AuthErrorPage() {
+  return (
+    <Suspense fallback={<AuthErrorFallback />}>
+      <AuthErrorContent />
+    </Suspense>
   );
 }
