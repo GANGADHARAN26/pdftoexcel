@@ -4,7 +4,8 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { FileText, Calendar, Clock, TrendingUp, User, Crown } from 'lucide-react';
-import FileUpload from '../../components/FileUpload';
+import EnhancedFileUpload from '../../components/EnhancedFileUpload';
+import ProcessingDashboard from '../../components/ProcessingDashboard';
 import { formatDate, formatFileSize } from '../../lib/utils';
 
 export default function DashboardPage() {
@@ -12,6 +13,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [userStats, setUserStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sessionId, setSessionId] = useState(null);
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -20,6 +22,10 @@ export default function DashboardPage() {
       router.push('/');
       return;
     }
+
+    // Generate session ID for file uploads
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setSessionId(sessionId);
 
     fetchUserStats();
   }, [session, status, router]);
@@ -148,70 +154,17 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Upload Section */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
-            Convert New Document
-          </h2>
-          <FileUpload onUploadComplete={handleUploadComplete} />
-        </div>
+        {/* Enhanced Upload Section */}
+        {sessionId && (
+          <div className="mb-8">
+            <EnhancedFileUpload sessionId={sessionId} />
+          </div>
+        )}
 
-        {/* Conversion History */}
-        {userStats?.conversions && userStats.conversions.length > 0 && (
-          <div className="bg-white rounded-lg shadow-sm p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              Recent Conversions
-            </h2>
-            <div className="overflow-x-auto">
-              <table className="min-w-full table-auto">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">File Name</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Size</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Date</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-700">Processing Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {userStats.conversions.map((conversion) => (
-                    <tr key={conversion.id} className="border-b border-gray-100">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center space-x-2">
-                          <FileText className="h-4 w-4 text-blue-600" />
-                          <span className="text-sm text-gray-900">
-                            {conversion.originalFileName}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {formatFileSize(conversion.fileSize)}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                          conversion.status === 'success' 
-                            ? 'bg-green-100 text-green-800' 
-                            : conversion.status === 'failed'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {conversion.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        {formatDate(conversion.createdAt)}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">
-                        <div className="flex items-center space-x-1">
-                          <Clock className="h-3 w-3" />
-                          <span>{(conversion.processingTime / 1000).toFixed(1)}s</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        {/* Enhanced Processing Dashboard */}
+        {sessionId && (
+          <div className="mb-8">
+            <ProcessingDashboard sessionId={sessionId} />
           </div>
         )}
 

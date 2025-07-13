@@ -1,10 +1,18 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Shield, Users, CheckCircle, FileText, Download, Upload } from 'lucide-react';
-import FileUpload from '../components/FileUpload';
+import EnhancedFileUpload from '../components/EnhancedFileUpload';
 import Link from 'next/link';
 
 export default function Home() {
+  const [sessionId, setSessionId] = useState(null);
+
+  useEffect(() => {
+    // Generate session ID for anonymous users
+    const sessionId = `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setSessionId(sessionId);
+  }, []);
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Hero Section */}
@@ -42,7 +50,7 @@ export default function Home() {
             </p>
           </div>
           
-          <FileUpload />
+          {sessionId && <EnhancedFileUpload sessionId={sessionId} />}
         </div>
       </section>
 
