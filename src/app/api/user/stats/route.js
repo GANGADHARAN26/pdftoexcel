@@ -7,43 +7,28 @@ import Conversion from '../../../../models/Conversion';
 
 export async function GET(request) {
   try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
+    // DEVELOPMENT MODE: Skip authentication and return mock data
     await connectToMongoDB();
 
-    const user = await User.findById(session.user.id);
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    // Get conversion history
-    const conversions = await Conversion.find({ userId: session.user.id })
+    // Get recent conversions (no user filtering in dev mode)
+    const conversions = await Conversion.find({})
       .sort({ createdAt: -1 })
       .limit(20);
 
-    // Calculate usage limits
-    const freeLimit = parseInt(process.env.REGISTERED_PAGES_PER_DAY) || 5;
-    const todayUsage = user.usageStats.today.count || 0;
-    const remainingToday = user.isSubscribed ? 'Unlimited' : Math.max(0, freeLimit - todayUsage);
-
     return NextResponse.json({
       user: {
-        name: user.name,
-        email: user.email,
-        image: user.image,
-        isSubscribed: user.isSubscribed,
-        subscriptionStatus: user.subscriptionStatus,
-        subscriptionEndDate: user.subscriptionEndDate,
+        name: 'Development User',
+        email: 'dev@example.com',
+        image: null,
+        isSubscribed: true, // Always subscribed in dev mode
+        subscriptionStatus: 'active',
+        subscriptionEndDate: null,
       },
       usage: {
-        today: todayUsage,
-        thisMonth: user.usageStats.thisMonth.count || 0,
-        total: user.usageStats.total || 0,
-        remainingToday,
+        today: 0,
+        thisMonth: 0,
+        total: conversions.length,
+        remainingToday: 'Unlimited', // No limits in dev mode
       },
       conversions: conversions.map(conv => ({
         id: conv._id,

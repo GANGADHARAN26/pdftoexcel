@@ -33,12 +33,29 @@ export default function PricingPage() {
   return (
     <div className="py-16 px-4 sm:px-6 lg:px-8 min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto">
+        {/* Development Mode Banner */}
+        <div className="mb-12 p-6 bg-gradient-to-r from-green-100 to-blue-100 border-2 border-green-300 rounded-lg text-center">
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <span className="text-2xl">🚀</span>
+            <span className="font-bold text-green-800 text-2xl">DEVELOPMENT MODE</span>
+          </div>
+          <p className="text-lg text-green-700 font-medium mb-2">
+            All PDF conversion features are currently FREE and unlimited!
+          </p>
+          <p className="text-green-600">
+            No sign-up required • No payment needed • Full access to all features
+          </p>
+        </div>
+
         <div className="text-center mb-16">
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
             Choose Your Plan
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Select the perfect plan for your document conversion needs
+          </p>
+          <p className="text-lg text-blue-600 font-medium mt-2">
+            (Currently all features are free in development mode)
           </p>
         </div>
 
@@ -47,14 +64,12 @@ export default function PricingPage() {
           <PricingCard
             plan={freePlan}
             planId="free"
-            isCurrentPlan={!session}
           />
 
           {/* Registered Plan */}
           <PricingCard
             plan={registeredPlan}
             planId="registered"
-            isCurrentPlan={session && !session.user.isSubscribed}
           />
 
           {/* Basic Plan */}
@@ -62,14 +77,12 @@ export default function PricingPage() {
             plan={SUBSCRIPTION_PLANS.basic}
             planId="basic"
             isPopular={true}
-            isCurrentPlan={session?.user?.subscriptionStatus === 'active'}
           />
 
           {/* Pro Plan */}
           <PricingCard
             plan={SUBSCRIPTION_PLANS.pro}
             planId="pro"
-            isCurrentPlan={session?.user?.subscriptionStatus === 'active'}
           />
         </div>
 
@@ -96,8 +109,8 @@ export default function PricingPage() {
                   What file formats are supported?
                 </h3>
                 <p className="text-gray-600">
-                  We currently support PDF files containing financial statements, bank statements, 
-                  and other tabular financial data. Output is provided in Excel (.xlsx) format.
+                  We currently support PDF files containing tables, forms, reports,
+                  and other structured data. Output is provided in Excel (.xlsx) format.
                 </p>
               </div>
 
@@ -133,7 +146,7 @@ export default function PricingPage() {
             We provide bespoke services for clients who have other document formats to process
           </p>
           <a
-            href="mailto:contact@financeconverter.com"
+            href="mailto:contact@pdfconverter.com"
             className="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium inline-block"
           >
             Contact Us

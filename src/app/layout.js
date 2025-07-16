@@ -1,8 +1,8 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import AuthSessionProvider from "../components/SessionProvider";
 import { Toaster } from 'react-hot-toast';
 import Header from "../components/Header";
+import AppSessionProvider from "../components/SessionProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "FinanceConverter - PDF to Excel Converter",
-  description: "Convert your finance PDF statements to Excel format easily and securely",
+  title: "PDFConverter - PDF to Excel Converter",
+  description: "Convert your PDF documents to Excel format easily and securely",
 };
 
 export default function RootLayout({ children }) {
@@ -25,22 +25,22 @@ export default function RootLayout({ children }) {
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50`}
       >
-        <AuthSessionProvider>
+        <AppSessionProvider>
           <Header />
           <main className="min-h-screen">
             {children}
           </main>
-          <Toaster 
-            position="top-right"
-            toastOptions={{
-              duration: 4000,
-              style: {
-                background: '#363636',
-                color: '#fff',
-              },
-            }}
-          />
-        </AuthSessionProvider>
+        </AppSessionProvider>
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: '#363636',
+              color: '#fff',
+            },
+          }}
+        />
       </body>
     </html>
   );

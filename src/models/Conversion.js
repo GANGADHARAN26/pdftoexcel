@@ -86,6 +86,55 @@ const ConversionSchema = new mongoose.Schema({
   hasPreview: {
     type: Boolean,
     default: false,
+  },
+  // Enhanced metadata for comprehensive extraction
+  metadata: {
+    totalTextItems: {
+      type: Number,
+      default: 0,
+    },
+    totalTables: {
+      type: Number,
+      default: 0,
+    },
+    totalImages: {
+      type: Number,
+      default: 0,
+    },
+    totalFormFields: {
+      type: Number,
+      default: 0,
+    },
+    hasImages: {
+      type: Boolean,
+      default: false,
+    },
+    hasTables: {
+      type: Boolean,
+      default: false,
+    },
+    extractionType: {
+      type: String,
+      default: 'comprehensive_multi_worksheet',
+    },
+    processingDetails: {
+      pagesProcessed: {
+        type: Number,
+        default: 0,
+      },
+      averageItemsPerPage: {
+        type: Number,
+        default: 0,
+      },
+      hasImages: {
+        type: Boolean,
+        default: false,
+      },
+      hasTables: {
+        type: Boolean,
+        default: false,
+      }
+    }
   }
 }, {
   timestamps: true,

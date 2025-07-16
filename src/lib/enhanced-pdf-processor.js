@@ -1,13 +1,20 @@
-import pdfParse from 'pdf-parse';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import ExcelJS from 'exceljs';
-import fs from 'fs';
 import path from 'path';
+import fs from 'fs';
+import { pathToFileURL } from 'url';
+
+if (typeof window === 'undefined') {
+  const workerPath = path.join(process.cwd(), 'public', 'pdf.worker.mjs');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pathToFileURL(workerPath).href;
+} else {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `/pdf.worker.mjs`;
+}
 
 export class EnhancedPDFProcessor {
   constructor() {
     this.ensureUploadDir();
-    this.bankPatterns = this.initializeBankPatterns();
-    this.supportedBanks = ['SBI', 'HDFC', 'ICICI', 'AXIS', 'PNB', 'KOTAK', 'CANARA', 'BOI', 'UBI', 'FEDERAL', 'COMMERCE', 'UNION', 'SYNDICATE'];
+    this.debugMode = process.env.NODE_ENV === 'development';
   }
 
   ensureUploadDir() {
@@ -17,105 +24,68 @@ export class EnhancedPDFProcessor {
     }
   }
 
-  initializeBankPatterns() {
-    return {
-      SBI: {
-        header: /STATE BANK OF INDIA|SBI|STATEMENT OF ACCOUNT/i,
-        transactionPattern: /(\d{2}\/\d{2}\/\d{4})\s+([A-Z0-9\/\-\s]+)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/g,
-        accountPattern: /Account No[:\s]+(\d+)/i,
-        holderPattern: /Account Holder[:\s]+([A-Z\s]+)/i,
-        dateRangePattern: /From[:\s]+(\d{2}\/\d{2}\/\d{4})\s+To[:\s]+(\d{2}\/\d{2}\/\d{4})/i
-      },
-      HDFC: {
-        header: /HDFC BANK|STATEMENT OF ACCOUNT/i,
-        transactionPattern: /(\d{2}\/\d{2}\/\d{4})\s+([A-Z0-9\/\-\s]+)\s+([\d,]+\.?\d*)\s*([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/g,
-        accountPattern: /Account Number[:\s]+(\d+)/i,
-        holderPattern: /Name[:\s]+([A-Z\s]+)/i,
-        dateRangePattern: /Statement Period[:\s]+(\d{2}\/\d{2}\/\d{4})\s+to\s+(\d{2}\/\d{2}\/\d{4})/i
-      },
-      ICICI: {
-        header: /ICICI BANK|ACCOUNT STATEMENT/i,
-        transactionPattern: /(\d{2}-\d{2}-\d{4})\s+([A-Z0-9\/\-\s]+)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/g,
-        accountPattern: /Account Number[:\s]+(\d+)/i,
-        holderPattern: /Customer Name[:\s]+([A-Z\s]+)/i,
-        dateRangePattern: /Statement Period[:\s]+(\d{2}-\d{2}-\d{4})\s+to\s+(\d{2}-\d{2}-\d{4})/i
-      },
-      AXIS: {
-        header: /AXIS BANK|STATEMENT OF ACCOUNT/i,
-        transactionPattern: /(\d{2}\/\d{2}\/\d{4})\s+([A-Z0-9\/\-\s]+)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/g,
-        accountPattern: /Account No[:\s]+(\d+)/i,
-        holderPattern: /Account Holder[:\s]+([A-Z\s]+)/i,
-        dateRangePattern: /From[:\s]+(\d{2}\/\d{2}\/\d{4})\s+To[:\s]+(\d{2}\/\d{2}\/\d{4})/i
-      },
-      FEDERAL: {
-        header: /FEDERAL BANK|ACCOUNT STATEMENT/i,
-        transactionPattern: /(\d{2}\/\d{2}\/\d{4})\s+([A-Z0-9\/\-\s]+)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/g,
-        accountPattern: /Account Number[:\s]+(\d+)/i,
-        holderPattern: /Account Holder[:\s]+([A-Z\s]+)/i,
-        dateRangePattern: /Statement Period[:\s]+(\d{2}\/\d{2}\/\d{4})\s+to\s+(\d{2}\/\d{2}\/\d{4})/i
-      },
-      COMMERCE: {
-        header: /COMMERCE BANK|BANK STATEMENT/i,
-        transactionPattern: /(\d{2}\/\d{2}\/\d{4})\s+([A-Z0-9\/\-\s]+)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/g,
-        accountPattern: /Account No[:\s]+(\d+)/i,
-        holderPattern: /Account Holder[:\s]+([A-Z\s]+)/i,
-        dateRangePattern: /From[:\s]+(\d{2}\/\d{2}\/\d{4})\s+To[:\s]+(\d{2}\/\d{2}\/\d{4})/i
-      },
-      GENERIC: {
-        header: /BANK STATEMENT|STATEMENT OF ACCOUNT|ACCOUNT STATEMENT/i,
-        transactionPattern: /(\d{2}[\/\-]\d{2}[\/\-]\d{4})\s+([A-Z0-9\/\-\s]+)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)\s+([\d,]+\.?\d*)/g,
-        accountPattern: /Account\s*(?:No|Number)[:\s]+(\d+)/i,
-        holderPattern: /(?:Account\s*Holder|Name|Customer\s*Name)[:\s]+([A-Z\s]+)/i,
-        dateRangePattern: /(?:From|Statement\s*Period)[:\s]+(\d{2}[\/\-]\d{2}[\/\-]\d{4})\s+(?:to|To)\s+(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i
-      }
-    };
-  }
-
   async processPDF(fileBuffer, originalFileName) {
     const startTime = Date.now();
-    
     try {
-      // Parse PDF
-      const pdfData = await pdfParse(fileBuffer);
-      const text = pdfData.text;
+      const pdf = await pdfjsLib.getDocument({
+        data: fileBuffer,
+        // Enhanced options for better text extraction
+        useSystemFonts: true,
+        disableFontFace: false,
+        verbosity: this.debugMode ? 1 : 0
+      }).promise;
       
-      // Detect bank type
-      const bankType = this.detectBankType(text);
-      
-      // Extract structured data
-      const structuredData = await this.extractStructuredData(text, bankType);
-      
-      // Convert to JSON format
-      const jsonData = this.convertToJSON(structuredData, bankType);
-      
-      // Generate preview data
-      const previewData = this.generatePreviewData(jsonData, text);
-      
-      // Create Excel file with preserved formatting
-      const excelBuffer = await this.createFormattedExcelFile(jsonData, originalFileName, bankType);
-      
+      const numPages = pdf.numPages;
+      let allPageData = [];
+      let totalTextItems = 0;
+      let totalImages = 0;
+      let totalTables = 0;
+
+      console.log(`Processing ${numPages} pages from ${originalFileName}`);
+
+      // Process each page with comprehensive data extraction
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const pageData = await this.extractCompletePageData(page, pageNum);
+        allPageData.push(pageData);
+        
+        totalTextItems += pageData.textItems.length;
+        totalImages += pageData.images.length;
+        totalTables += pageData.tables.length;
+        
+        if (this.debugMode) {
+          console.log(`Page ${pageNum}: ${pageData.textItems.length} text items, ${pageData.images.length} images, ${pageData.tables.length} tables`);
+        }
+      }
+
+      const excelBuffer = await this.createComprehensiveExcelFile(allPageData, originalFileName);
       const processingTime = Date.now() - startTime;
-      
+
+      // Create detailed preview data
+      const previewData = this.generateDetailedPreview(allPageData);
+
       return {
         success: true,
         excelBuffer,
-        jsonData,
-        previewData,
-        bankType,
         processingTime,
-        pagesProcessed: pdfData.numpages,
+        pagesProcessed: numPages,
         originalFileName,
+        previewData,
         metadata: {
-          accountNumber: structuredData.accountInfo?.accountNumber || 'N/A',
-          accountHolder: structuredData.accountInfo?.accountHolder || 'N/A',
-          statementPeriod: structuredData.accountInfo?.statementPeriod || 'N/A',
-          transactionCount: structuredData.transactions?.length || 0,
-          openingBalance: structuredData.summary?.openingBalance || 0,
-          closingBalance: structuredData.summary?.closingBalance || 0
+          totalTextItems,
+          totalImages,
+          totalTables,
+          extractionQuality: 'comprehensive',
+          processingDetails: {
+            pagesProcessed: numPages,
+            averageItemsPerPage: Math.round(totalTextItems / numPages),
+            hasImages: totalImages > 0,
+            hasTables: totalTables > 0
+          }
         }
       };
     } catch (error) {
-      console.error('Enhanced PDF processing error:', error);
+      console.error('PDF processing error:', error);
       return {
         success: false,
         error: error.message,
@@ -124,410 +94,752 @@ export class EnhancedPDFProcessor {
     }
   }
 
-  detectBankType(text) {
-    const upperText = text.toUpperCase();
+  async extractCompletePageData(page, pageNum) {
+    const viewport = page.getViewport({ scale: 1.0 });
     
-    // Check for specific bank patterns
-    for (const [bankName, pattern] of Object.entries(this.bankPatterns)) {
-      if (bankName !== 'GENERIC' && pattern.header.test(upperText)) {
-        return bankName;
+    // Extract text content with positioning
+    const textContent = await page.getTextContent({
+      normalizeWhitespace: false,
+      disableCombineTextItems: false
+    });
+
+    // Extract operator list for additional content detection
+    const operatorList = await page.getOperatorList();
+    
+    // Detect images and graphics
+    const images = this.detectImages(operatorList);
+    
+    // Enhanced text processing with better positioning
+    const processedTextItems = this.processTextItems(textContent.items, viewport);
+    
+    // Detect table structures
+    const tables = this.detectTables(processedTextItems);
+    
+    // Extract form fields if any
+    const annotations = await page.getAnnotations();
+    const formFields = this.extractFormFields(annotations);
+
+    return {
+      pageNumber: pageNum,
+      viewport,
+      textItems: processedTextItems,
+      images,
+      tables,
+      formFields,
+      rawTextContent: textContent,
+      operatorList
+    };
+  }
+
+  processTextItems(items, viewport) {
+    if (!items || items.length === 0) return [];
+
+    return items.map((item, index) => {
+      const transform = item.transform;
+      const x = transform[4];
+      const y = viewport.height - transform[5]; // Convert to top-down coordinates
+      
+      return {
+        ...item,
+        index,
+        x: Math.round(x * 100) / 100,
+        y: Math.round(y * 100) / 100,
+        width: item.width || 0,
+        height: item.height || 0,
+        fontSize: Math.abs(transform[0]) || 12,
+        text: item.str || '',
+        hasEOL: item.hasEOL || false,
+        dir: item.dir || 'ltr',
+        fontName: item.fontName || 'unknown'
+      };
+    }).filter(item => item.text.trim().length > 0);
+  }
+
+  detectImages(operatorList) {
+    const images = [];
+    const ops = operatorList.fnArray;
+    const args = operatorList.argsArray;
+
+    for (let i = 0; i < ops.length; i++) {
+      if (ops[i] === pdfjsLib.OPS.paintImageXObject ||
+          ops[i] === pdfjsLib.OPS.paintInlineImageXObject ||
+          ops[i] === pdfjsLib.OPS.paintImageMaskXObject) {
+        images.push({
+          type: 'image',
+          operation: ops[i],
+          args: args[i],
+          index: i
+        });
       }
     }
-    
-    // Check for supported bank keywords
-    for (const bank of this.supportedBanks) {
-      if (upperText.includes(bank)) {
-        return bank;
-      }
-    }
-    
-    return 'GENERIC';
+
+    return images;
   }
 
-  async extractStructuredData(text, bankType) {
-    const pattern = this.bankPatterns[bankType] || this.bankPatterns.GENERIC;
-    const lines = text.split('\n');
-    
-    // Extract account information
-    const accountInfo = this.extractAccountInfo(text, pattern);
-    
-    // Extract transactions
-    const transactions = this.extractTransactions(text, pattern);
-    
-    // Extract summary information
-    const summary = this.extractSummary(text, lines);
-    
-    // Extract table structure with spacing
-    const tableStructure = this.extractTableStructure(lines);
-    
-    return {
-      accountInfo,
-      transactions,
-      summary,
-      tableStructure,
-      rawText: text,
-      bankType
-    };
-  }
+  detectTables(textItems) {
+    if (!textItems || textItems.length === 0) return [];
 
-  extractAccountInfo(text, pattern) {
-    const accountMatch = text.match(pattern.accountPattern);
-    const holderMatch = text.match(pattern.holderPattern);
-    const dateMatch = text.match(pattern.dateRangePattern);
+    const tables = [];
+    const tolerance = 5; // Pixel tolerance for alignment
     
-    return {
-      accountNumber: accountMatch ? accountMatch[1] : null,
-      accountHolder: holderMatch ? holderMatch[1].trim() : null,
-      statementPeriod: dateMatch ? `${dateMatch[1]} to ${dateMatch[2]}` : null
-    };
-  }
-
-  extractTransactions(text, pattern) {
-    const transactions = [];
-    const matches = [...text.matchAll(pattern.transactionPattern)];
+    // Group items by rows (similar Y coordinates)
+    const rows = this.groupItemsByRows(textItems, tolerance);
     
-    matches.forEach(match => {
-      const [, date, description, debit, credit, balance] = match;
-      transactions.push({
-        date: this.normalizeDate(date),
-        description: description.trim(),
-        debit: this.parseAmount(debit) || 0,
-        credit: this.parseAmount(credit) || 0,
-        balance: this.parseAmount(balance) || 0,
-        rawMatch: match[0]
-      });
-    });
-    
-    return transactions;
-  }
-
-  extractSummary(text, lines) {
-    const summary = {
-      openingBalance: 0,
-      closingBalance: 0,
-      totalCredits: 0,
-      totalDebits: 0
-    };
-    
-    // Look for balance patterns
-    const balancePatterns = [
-      /Opening Balance[:\s]+([\d,]+\.?\d*)/i,
-      /Closing Balance[:\s]+([\d,]+\.?\d*)/i,
-      /Total Credits[:\s]+([\d,]+\.?\d*)/i,
-      /Total Debits[:\s]+([\d,]+\.?\d*)/i
-    ];
-    
-    lines.forEach(line => {
-      const openingMatch = line.match(balancePatterns[0]);
-      const closingMatch = line.match(balancePatterns[1]);
-      const creditMatch = line.match(balancePatterns[2]);
-      const debitMatch = line.match(balancePatterns[3]);
+    // Detect table-like structures
+    for (let i = 0; i < rows.length - 1; i++) {
+      const currentRow = rows[i];
+      const nextRow = rows[i + 1];
       
-      if (openingMatch) summary.openingBalance = this.parseAmount(openingMatch[1]);
-      if (closingMatch) summary.closingBalance = this.parseAmount(closingMatch[1]);
-      if (creditMatch) summary.totalCredits = this.parseAmount(creditMatch[1]);
-      if (debitMatch) summary.totalDebits = this.parseAmount(debitMatch[1]);
-    });
-    
-    return summary;
-  }
-
-  extractTableStructure(lines) {
-    const tableStructure = {
-      headers: [],
-      rows: [],
-      formatting: {
-        columnWidths: [],
-        borders: [],
-        spacing: []
-      }
-    };
-    
-    // Detect table headers
-    const headerKeywords = ['DATE', 'DESCRIPTION', 'DEBIT', 'CREDIT', 'BALANCE', 'PARTICULARS', 'WITHDRAWAL', 'DEPOSIT'];
-    
-    lines.forEach((line, index) => {
-      const upperLine = line.toUpperCase();
-      const hasMultipleKeywords = headerKeywords.filter(keyword => upperLine.includes(keyword)).length >= 2;
-      
-      if (hasMultipleKeywords && tableStructure.headers.length === 0) {
-        // Extract column positions and widths
-        const columns = this.detectColumns(line);
-        tableStructure.headers = columns.map(col => col.text);
-        tableStructure.formatting.columnWidths = columns.map(col => col.width);
-        tableStructure.formatting.spacing = columns.map(col => col.position);
-      }
-      
-      // Detect table rows based on date pattern
-      if (/\d{2}[\/\-]\d{2}[\/\-]\d{4}/.test(line)) {
-        const rowData = this.parseTableRow(line, tableStructure.formatting.spacing);
-        tableStructure.rows.push(rowData);
-      }
-    });
-    
-    return tableStructure;
-  }
-
-  detectColumns(line) {
-    const columns = [];
-    const words = line.split(/\s+/);
-    let currentPosition = 0;
-    
-    words.forEach(word => {
-      const position = line.indexOf(word, currentPosition);
-      columns.push({
-        text: word,
-        position: position,
-        width: word.length
-      });
-      currentPosition = position + word.length;
-    });
-    
-    return columns;
-  }
-
-  parseTableRow(line, spacing) {
-    const cells = [];
-    let currentIndex = 0;
-    
-    spacing.forEach((position, index) => {
-      const nextPosition = spacing[index + 1] || line.length;
-      const cellText = line.substring(position, nextPosition).trim();
-      cells.push(cellText);
-    });
-    
-    return cells;
-  }
-
-  convertToJSON(structuredData, bankType) {
-    return {
-      metadata: {
-        bankType,
-        accountNumber: structuredData.accountInfo?.accountNumber,
-        accountHolder: structuredData.accountInfo?.accountHolder,
-        statementPeriod: structuredData.accountInfo?.statementPeriod,
-        processedAt: new Date().toISOString()
-      },
-      summary: structuredData.summary,
-      transactions: structuredData.transactions,
-      tableStructure: structuredData.tableStructure,
-      formatting: {
-        preserveSpacing: true,
-        columnAlignment: this.detectColumnAlignment(structuredData.tableStructure),
-        borders: true,
-        headerStyling: true
-      }
-    };
-  }
-
-  detectColumnAlignment(tableStructure) {
-    const alignments = [];
-    
-    if (tableStructure.headers) {
-      tableStructure.headers.forEach((header, index) => {
-        const headerLower = header.toLowerCase();
-        if (headerLower.includes('date')) {
-          alignments.push('center');
-        } else if (headerLower.includes('amount') || headerLower.includes('balance') || 
-                   headerLower.includes('debit') || headerLower.includes('credit')) {
-          alignments.push('right');
-        } else {
-          alignments.push('left');
+      // Check if rows have similar column structure
+      if (this.areRowsSimilar(currentRow, nextRow, tolerance)) {
+        let tableRows = [currentRow, nextRow];
+        let j = i + 2;
+        
+        // Extend table detection
+        while (j < rows.length && this.areRowsSimilar(tableRows[tableRows.length - 1], rows[j], tolerance)) {
+          tableRows.push(rows[j]);
+          j++;
         }
-      });
+        
+        if (tableRows.length >= 2) { // Minimum 2 rows for a table
+          tables.push({
+            type: 'table',
+            startRow: i,
+            endRow: j - 1,
+            rows: tableRows,
+            columns: this.detectColumns(tableRows),
+            rowCount: tableRows.length,
+            columnCount: this.getMaxColumns(tableRows)
+          });
+          
+          i = j - 1; // Skip processed rows
+        }
+      }
     }
-    
-    return alignments;
+
+    return tables;
   }
 
-  generatePreviewData(jsonData, rawText) {
-    const preview = {
-      accountInfo: jsonData.metadata,
-      transactionSample: jsonData.transactions.slice(0, 10), // First 10 transactions
-      summary: jsonData.summary,
-      tableHeaders: jsonData.tableStructure.headers,
-      totalTransactions: jsonData.transactions.length,
-      rawTextSample: rawText.substring(0, 500) + '...'
-    };
+  groupItemsByRows(items, tolerance) {
+    if (!items || items.length === 0) return [];
+
+    const rows = [];
+    const sortedItems = [...items].sort((a, b) => b.y - a.y); // Sort by Y coordinate (top to bottom)
     
+    let currentRow = [sortedItems[0]];
+    let currentY = sortedItems[0].y;
+
+    for (let i = 1; i < sortedItems.length; i++) {
+      const item = sortedItems[i];
+      
+      if (Math.abs(item.y - currentY) <= tolerance) {
+        currentRow.push(item);
+      } else {
+        // Sort current row by X coordinate (left to right)
+        currentRow.sort((a, b) => a.x - b.x);
+        rows.push(currentRow);
+        currentRow = [item];
+        currentY = item.y;
+      }
+    }
+    
+    // Add the last row
+    if (currentRow.length > 0) {
+      currentRow.sort((a, b) => a.x - b.x);
+      rows.push(currentRow);
+    }
+
+    return rows;
+  }
+
+  areRowsSimilar(row1, row2, tolerance) {
+    if (!row1 || !row2 || row1.length < 2 || row2.length < 2) return false;
+    
+    // Check if rows have similar number of items
+    const lengthDiff = Math.abs(row1.length - row2.length);
+    if (lengthDiff > 2) return false;
+    
+    // Check if X positions are similar (indicating columns)
+    const positions1 = row1.map(item => item.x).sort((a, b) => a - b);
+    const positions2 = row2.map(item => item.x).sort((a, b) => a - b);
+    
+    let matches = 0;
+    for (let i = 0; i < Math.min(positions1.length, positions2.length); i++) {
+      for (let j = 0; j < positions2.length; j++) {
+        if (Math.abs(positions1[i] - positions2[j]) <= tolerance) {
+          matches++;
+          break;
+        }
+      }
+    }
+    
+    return matches >= Math.min(positions1.length, positions2.length) * 0.6; // 60% similarity
+  }
+
+  detectColumns(tableRows) {
+    const allXPositions = [];
+    
+    tableRows.forEach(row => {
+      row.forEach(item => {
+        allXPositions.push(item.x);
+      });
+    });
+    
+    // Sort and remove duplicates with tolerance
+    const uniquePositions = [];
+    const sortedPositions = [...new Set(allXPositions)].sort((a, b) => a - b);
+    
+    for (const pos of sortedPositions) {
+      if (!uniquePositions.some(existing => Math.abs(existing - pos) <= 5)) {
+        uniquePositions.push(pos);
+      }
+    }
+    
+    return uniquePositions.map((x, index) => ({
+      index,
+      x,
+      width: index < uniquePositions.length - 1 ? uniquePositions[index + 1] - x : 100
+    }));
+  }
+
+  getMaxColumns(tableRows) {
+    return Math.max(...tableRows.map(row => row.length));
+  }
+
+  extractFormFields(annotations) {
+    if (!annotations || annotations.length === 0) return [];
+    
+    return annotations
+      .filter(annotation => annotation.subtype === 'Widget')
+      .map(field => ({
+        type: 'form_field',
+        fieldType: field.fieldType || 'unknown',
+        fieldName: field.fieldName || '',
+        fieldValue: field.fieldValue || '',
+        rect: field.rect || [],
+        readOnly: field.readOnly || false
+      }));
+  }
+
+  generateDetailedPreview(allPageData) {
+    const preview = {
+      totalPages: allPageData.length,
+      totalTextItems: 0,
+      totalTables: 0,
+      totalImages: 0,
+      totalFormFields: 0,
+      sampleContent: [],
+      tablePreview: [],
+      extractionSummary: {}
+    };
+
+    allPageData.forEach((pageData, index) => {
+      preview.totalTextItems += pageData.textItems.length;
+      preview.totalTables += pageData.tables.length;
+      preview.totalImages += pageData.images.length;
+      preview.totalFormFields += pageData.formFields.length;
+
+      // Sample content from first page
+      if (index === 0 && pageData.textItems.length > 0) {
+        preview.sampleContent = pageData.textItems
+          .slice(0, 20)
+          .map(item => item.text)
+          .filter(text => text.trim().length > 0);
+      }
+
+      // Table preview from first table found
+      if (preview.tablePreview.length === 0 && pageData.tables.length > 0) {
+        const firstTable = pageData.tables[0];
+        preview.tablePreview = firstTable.rows.slice(0, 3).map(row =>
+          row.map(item => item.text).join(' | ')
+        );
+      }
+    });
+
+    preview.extractionSummary = {
+      hasText: preview.totalTextItems > 0,
+      hasTables: preview.totalTables > 0,
+      hasImages: preview.totalImages > 0,
+      hasFormFields: preview.totalFormFields > 0,
+      completeness: 'comprehensive'
+    };
+
     return preview;
   }
-
-  async createFormattedExcelFile(jsonData, originalFileName, bankType) {
+async createComprehensiveExcelFile(allPageData, originalFileName) {
     const workbook = new ExcelJS.Workbook();
     
     // Set workbook properties
-    workbook.creator = 'Finance PDF to Excel Converter';
+    workbook.creator = 'Enhanced PDF to Excel Converter';
     workbook.created = new Date();
     workbook.modified = new Date();
-    
-    // Create Summary Sheet
-    const summarySheet = workbook.addWorksheet('Summary');
-    this.createSummarySheet(summarySheet, jsonData);
-    
-    // Create Transactions Sheet
-    const transactionsSheet = workbook.addWorksheet('Transactions');
-    this.createTransactionsSheet(transactionsSheet, jsonData);
-    
-    // Create Raw Data Sheet
-    const rawDataSheet = workbook.addWorksheet('Raw Data');
-    this.createRawDataSheet(rawDataSheet, jsonData);
-    
-    // Generate buffer
-    const buffer = await workbook.xlsx.writeBuffer();
-    return buffer;
+    workbook.subject = `Converted from ${originalFileName}`;
+
+    // Create summary worksheet
+    await this.createSummaryWorksheet(workbook, allPageData, originalFileName);
+
+    // Create comprehensive data worksheet with ALL content
+    await this.createAllDataWorksheet(workbook, allPageData);
+
+    // Create separate worksheets for tables if detected
+    await this.createTableWorksheets(workbook, allPageData);
+
+    // Create form fields worksheet if any
+    await this.createFormFieldsWorksheet(workbook, allPageData);
+
+    // Create page-by-page worksheets for detailed analysis
+    await this.createPageWorksheets(workbook, allPageData);
+
+    return workbook.xlsx.writeBuffer();
   }
 
-  createSummarySheet(worksheet, jsonData) {
-    // Add title
-    const titleRow = worksheet.addRow([`${jsonData.metadata.bankType} Bank Statement Summary`]);
-    titleRow.font = { bold: true, size: 16 };
-    titleRow.alignment = { horizontal: 'center' };
-    worksheet.mergeCells(1, 1, 1, 4);
+  async createSummaryWorksheet(workbook, allPageData, originalFileName) {
+    const worksheet = workbook.addWorksheet('📊 Summary');
     
-    // Add spacing
-    worksheet.addRow([]);
-    
-    // Add account information
-    const accountInfo = [
-      ['Account Number', jsonData.metadata.accountNumber],
-      ['Account Holder', jsonData.metadata.accountHolder],
-      ['Statement Period', jsonData.metadata.statementPeriod],
-      ['Processed On', new Date().toLocaleDateString()]
+    // Title
+    worksheet.mergeCells('A1:D1');
+    const titleCell = worksheet.getCell('A1');
+    titleCell.value = `PDF Extraction Summary: ${originalFileName}`;
+    titleCell.font = { bold: true, size: 16, color: { argb: 'FF0066CC' } };
+    titleCell.alignment = { horizontal: 'center' };
+
+    // Statistics
+    let row = 3;
+    const stats = [
+      ['Total Pages', allPageData.length],
+      ['Total Text Items', allPageData.reduce((sum, page) => sum + page.textItems.length, 0)],
+      ['Total Tables Detected', allPageData.reduce((sum, page) => sum + page.tables.length, 0)],
+      ['Total Images Detected', allPageData.reduce((sum, page) => sum + page.images.length, 0)],
+      ['Total Form Fields', allPageData.reduce((sum, page) => sum + page.formFields.length, 0)],
+      ['Extraction Date', new Date().toLocaleString()],
+      ['Extraction Quality', 'COMPREHENSIVE - All data captured']
     ];
+
+    stats.forEach(([label, value]) => {
+      worksheet.getCell(`A${row}`).value = label;
+      worksheet.getCell(`A${row}`).font = { bold: true };
+      worksheet.getCell(`B${row}`).value = value;
+      row++;
+    });
+
+    // Page breakdown
+    row += 2;
+    worksheet.getCell(`A${row}`).value = 'Page Breakdown:';
+    worksheet.getCell(`A${row}`).font = { bold: true, size: 14 };
+    row++;
+
+    worksheet.getCell(`A${row}`).value = 'Page';
+    worksheet.getCell(`B${row}`).value = 'Text Items';
+    worksheet.getCell(`C${row}`).value = 'Tables';
+    worksheet.getCell(`D${row}`).value = 'Images';
+    worksheet.getCell(`E${row}`).value = 'Form Fields';
     
-    accountInfo.forEach(([label, value]) => {
-      const row = worksheet.addRow([label, value]);
-      row.getCell(1).font = { bold: true };
+    // Style header row
+    ['A', 'B', 'C', 'D', 'E'].forEach(col => {
+      const cell = worksheet.getCell(`${col}${row}`);
+      cell.font = { bold: true };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F3FF' } };
+    });
+    row++;
+
+    allPageData.forEach((pageData, index) => {
+      worksheet.getCell(`A${row}`).value = pageData.pageNumber;
+      worksheet.getCell(`B${row}`).value = pageData.textItems.length;
+      worksheet.getCell(`C${row}`).value = pageData.tables.length;
+      worksheet.getCell(`D${row}`).value = pageData.images.length;
+      worksheet.getCell(`E${row}`).value = pageData.formFields.length;
+      row++;
+    });
+
+    // Auto-fit columns
+    worksheet.columns.forEach(column => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, cell => {
+        const columnLength = cell.value ? cell.value.toString().length : 10;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
+        }
+      });
+      column.width = maxLength < 15 ? 15 : Math.min(maxLength, 50);
+    });
+  }
+
+  async createAllDataWorksheet(workbook, allPageData) {
+    const worksheet = workbook.addWorksheet('🔍 All Data');
+    
+    let currentRow = 1;
+    
+    // Add header
+    worksheet.mergeCells(`A1:F1`);
+    const headerCell = worksheet.getCell('A1');
+    headerCell.value = 'COMPLETE PDF CONTENT - ALL DATA EXTRACTED';
+    headerCell.font = { bold: true, size: 14, color: { argb: 'FF0066CC' } };
+    headerCell.alignment = { horizontal: 'center' };
+    currentRow = 3;
+
+    allPageData.forEach((pageData) => {
+      // Page separator
+      worksheet.mergeCells(`A${currentRow}:F${currentRow}`);
+      const pageCell = worksheet.getCell(`A${currentRow}`);
+      pageCell.value = `=== PAGE ${pageData.pageNumber} ===`;
+      pageCell.font = { bold: true, size: 12, color: { argb: 'FF006600' } };
+      pageCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F8F0' } };
+      pageCell.alignment = { horizontal: 'center' };
+      currentRow += 2;
+
+      // Process all text items for this page
+      if (pageData.textItems.length > 0) {
+        const rows = this.groupItemsByRows(pageData.textItems, 5);
+        
+        rows.forEach(rowItems => {
+          const excelRow = [];
+          let lastX = 0;
+          
+          // Sort items by X position
+          const sortedItems = rowItems.sort((a, b) => a.x - b.x);
+          
+          sortedItems.forEach(item => {
+            // Calculate spacing based on X position
+            const currentX = item.x;
+            const spacing = Math.max(0, Math.floor((currentX - lastX) / 20));
+            
+            // Add empty cells for spacing
+            for (let i = 0; i < spacing && excelRow.length < 50; i++) {
+              excelRow.push('');
+            }
+            
+            // Add the actual text
+            if (excelRow.length < 50) {
+              excelRow.push(item.text || '');
+            }
+            
+            lastX = currentX + (item.width || 0);
+          });
+          
+          // Add the row to worksheet
+          if (excelRow.some(cell => cell.toString().trim().length > 0)) {
+            worksheet.addRow(excelRow);
+            currentRow++;
+          }
+        });
+      }
+
+      // Add tables for this page
+      if (pageData.tables.length > 0) {
+        currentRow += 1;
+        worksheet.mergeCells(`A${currentRow}:F${currentRow}`);
+        const tableHeaderCell = worksheet.getCell(`A${currentRow}`);
+        tableHeaderCell.value = `--- TABLES ON PAGE ${pageData.pageNumber} ---`;
+        tableHeaderCell.font = { bold: true, italic: true, color: { argb: 'FF800080' } };
+        tableHeaderCell.alignment = { horizontal: 'center' };
+        currentRow += 1;
+
+        pageData.tables.forEach((table, tableIndex) => {
+          // Table identifier
+          worksheet.getCell(`A${currentRow}`).value = `Table ${tableIndex + 1}:`;
+          worksheet.getCell(`A${currentRow}`).font = { bold: true };
+          currentRow++;
+
+          // Add table rows
+          table.rows.forEach(rowItems => {
+            const tableRow = rowItems.map(item => item.text || '');
+            worksheet.addRow(tableRow);
+            currentRow++;
+          });
+          currentRow++; // Extra space after table
+        });
+      }
+
+      // Add form fields for this page
+      if (pageData.formFields.length > 0) {
+        currentRow += 1;
+        worksheet.mergeCells(`A${currentRow}:F${currentRow}`);
+        const formHeaderCell = worksheet.getCell(`A${currentRow}`);
+        formHeaderCell.value = `--- FORM FIELDS ON PAGE ${pageData.pageNumber} ---`;
+        formHeaderCell.font = { bold: true, italic: true, color: { argb: 'FFFF6600' } };
+        formHeaderCell.alignment = { horizontal: 'center' };
+        currentRow += 1;
+
+        pageData.formFields.forEach(field => {
+          worksheet.addRow([
+            `Field: ${field.fieldName}`,
+            `Type: ${field.fieldType}`,
+            `Value: ${field.fieldValue}`,
+            field.readOnly ? 'Read-Only' : 'Editable'
+          ]);
+          currentRow++;
+        });
+      }
+
+      currentRow += 2; // Space between pages
+    });
+
+    // Auto-fit columns with reasonable limits
+    worksheet.columns.forEach((column, index) => {
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, cell => {
+        const columnLength = cell.value ? cell.value.toString().length : 0;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
+        }
+      });
+      column.width = Math.max(8, Math.min(maxLength + 2, 40));
+    });
+  }
+
+  async createTableWorksheets(workbook, allPageData) {
+    let tableCount = 0;
+    
+    allPageData.forEach((pageData) => {
+      pageData.tables.forEach((table, tableIndex) => {
+        tableCount++;
+        const worksheetName = `📋 Table ${tableCount} (P${pageData.pageNumber})`;
+        const worksheet = workbook.addWorksheet(worksheetName);
+        
+        // Table header
+        worksheet.mergeCells('A1:E1');
+        const headerCell = worksheet.getCell('A1');
+        headerCell.value = `Table ${tableCount} from Page ${pageData.pageNumber}`;
+        headerCell.font = { bold: true, size: 14 };
+        headerCell.alignment = { horizontal: 'center' };
+        
+        let row = 3;
+        
+        // Add table data
+        table.rows.forEach((rowItems, rowIndex) => {
+          const rowData = rowItems.map(item => item.text || '');
+          worksheet.addRow(rowData);
+          
+          // Style first row as header if it looks like one
+          if (rowIndex === 0) {
+            const currentRow = worksheet.getRow(row);
+            currentRow.eachCell(cell => {
+              cell.font = { bold: true };
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F3FF' } };
+            });
+          }
+          row++;
+        });
+        
+        // Auto-fit columns
+        worksheet.columns.forEach(column => {
+          let maxLength = 0;
+          column.eachCell({ includeEmpty: true }, cell => {
+            const columnLength = cell.value ? cell.value.toString().length : 0;
+            if (columnLength > maxLength) {
+              maxLength = columnLength;
+            }
+          });
+          column.width = Math.max(10, Math.min(maxLength + 2, 50));
+        });
+      });
+    });
+  }
+
+  async createFormFieldsWorksheet(workbook, allPageData) {
+    const allFormFields = allPageData.flatMap(page => 
+      page.formFields.map(field => ({ ...field, pageNumber: page.pageNumber }))
+    );
+    
+    if (allFormFields.length === 0) return;
+    
+    const worksheet = workbook.addWorksheet('📝 Form Fields');
+    
+    // Header
+    worksheet.mergeCells('A1:F1');
+    const headerCell = worksheet.getCell('A1');
+    headerCell.value = 'FORM FIELDS EXTRACTED FROM PDF';
+    headerCell.font = { bold: true, size: 14 };
+    headerCell.alignment = { horizontal: 'center' };
+    
+    // Column headers
+    const headers = ['Page', 'Field Name', 'Field Type', 'Field Value', 'Read Only', 'Position'];
+    worksheet.addRow(headers);
+    
+    const headerRow = worksheet.getRow(3);
+    headerRow.eachCell(cell => {
+      cell.font = { bold: true };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE6F3FF' } };
     });
     
-    // Add spacing
-    worksheet.addRow([]);
-    
-    // Add summary data
-    const summaryData = [
-      ['Opening Balance', jsonData.summary.openingBalance],
-      ['Closing Balance', jsonData.summary.closingBalance],
-      ['Total Credits', jsonData.summary.totalCredits],
-      ['Total Debits', jsonData.summary.totalDebits],
-      ['Total Transactions', jsonData.transactions.length]
-    ];
-    
-    summaryData.forEach(([label, value]) => {
-      const row = worksheet.addRow([label, value]);
-      row.getCell(1).font = { bold: true };
-      if (typeof value === 'number') {
-        row.getCell(2).numFmt = '#,##0.00';
-      }
+    // Add form field data
+    allFormFields.forEach(field => {
+      worksheet.addRow([
+        field.pageNumber,
+        field.fieldName,
+        field.fieldType,
+        field.fieldValue,
+        field.readOnly ? 'Yes' : 'No',
+        field.rect ? `[${field.rect.join(', ')}]` : 'Unknown'
+      ]);
     });
     
     // Auto-fit columns
     worksheet.columns.forEach(column => {
-      column.width = 25;
-    });
-  }
-
-  createTransactionsSheet(worksheet, jsonData) {
-    // Add headers
-    const headers = ['Date', 'Description', 'Debit', 'Credit', 'Balance'];
-    const headerRow = worksheet.addRow(headers);
-    
-    // Style headers
-    headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
-    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '366092' } };
-    headerRow.alignment = { horizontal: 'center', vertical: 'middle' };
-    
-    // Add transaction data
-    jsonData.transactions.forEach(transaction => {
-      const row = worksheet.addRow([
-        transaction.date,
-        transaction.description,
-        transaction.debit || '',
-        transaction.credit || '',
-        transaction.balance
-      ]);
-      
-      // Format numeric columns
-      [3, 4, 5].forEach(colIndex => {
-        const cell = row.getCell(colIndex);
-        if (cell.value && typeof cell.value === 'number') {
-          cell.numFmt = '#,##0.00';
-          cell.alignment = { horizontal: 'right' };
+      let maxLength = 0;
+      column.eachCell({ includeEmpty: true }, cell => {
+        const columnLength = cell.value ? cell.value.toString().length : 0;
+        if (columnLength > maxLength) {
+          maxLength = columnLength;
         }
       });
+      column.width = Math.max(12, Math.min(maxLength + 2, 40));
+    });
+  }
+
+  async createPageWorksheets(workbook, allPageData) {
+    allPageData.forEach((pageData) => {
+      const worksheetName = `📄 Page ${pageData.pageNumber}`;
+      const worksheet = workbook.addWorksheet(worksheetName);
       
-      // Center align date
-      row.getCell(1).alignment = { horizontal: 'center' };
-    });
-    
-    // Add borders and auto-fit
-    this.addBordersAndAutoFit(worksheet);
-  }
-
-  createRawDataSheet(worksheet, jsonData) {
-    // Add raw text with proper formatting
-    const rawLines = jsonData.tableStructure.rawText?.split('\n') || [];
-    
-    rawLines.forEach(line => {
-      worksheet.addRow([line]);
-    });
-    
-    // Set column width
-    worksheet.getColumn(1).width = 100;
-    worksheet.getColumn(1).alignment = { wrapText: true };
-  }
-
-  addBordersAndAutoFit(worksheet) {
-    // Add borders
-    worksheet.eachRow((row, rowNumber) => {
-      row.eachCell((cell) => {
-        cell.border = {
-          top: { style: 'thin' },
-          left: { style: 'thin' },
-          bottom: { style: 'thin' },
-          right: { style: 'thin' }
-        };
+      // Page header
+      worksheet.mergeCells('A1:F1');
+      const headerCell = worksheet.getCell('A1');
+      headerCell.value = `PAGE ${pageData.pageNumber} - DETAILED CONTENT`;
+      headerCell.font = { bold: true, size: 14 };
+      headerCell.alignment = { horizontal: 'center' };
+      
+      let currentRow = 3;
+      
+      // Page statistics
+      worksheet.getCell(`A${currentRow}`).value = 'Page Statistics:';
+      worksheet.getCell(`A${currentRow}`).font = { bold: true };
+      currentRow++;
+      
+      const stats = [
+        ['Text Items', pageData.textItems.length],
+        ['Tables', pageData.tables.length],
+        ['Images', pageData.images.length],
+        ['Form Fields', pageData.formFields.length],
+        ['Page Dimensions', `${Math.round(pageData.viewport.width)} x ${Math.round(pageData.viewport.height)}`]
+      ];
+      
+      stats.forEach(([label, value]) => {
+        worksheet.getCell(`A${currentRow}`).value = label + ':';
+        worksheet.getCell(`B${currentRow}`).value = value;
+        currentRow++;
+      });
+      
+      currentRow += 2;
+      
+      // All text content for this page
+      if (pageData.textItems.length > 0) {
+        worksheet.getCell(`A${currentRow}`).value = 'All Text Content:';
+        worksheet.getCell(`A${currentRow}`).font = { bold: true, size: 12 };
+        currentRow += 2;
+        
+        const rows = this.groupItemsByRows(pageData.textItems, 5);
+        rows.forEach(rowItems => {
+          const rowData = [];
+          let lastX = 0;
+          
+          rowItems.sort((a, b) => a.x - b.x).forEach(item => {
+            const spacing = Math.max(0, Math.floor((item.x - lastX) / 15));
+            for (let i = 0; i < spacing && rowData.length < 30; i++) {
+              rowData.push('');
+            }
+            if (rowData.length < 30) {
+              rowData.push(item.text || '');
+            }
+            lastX = item.x + (item.width || 0);
+          });
+          
+          if (rowData.some(cell => cell.toString().trim().length > 0)) {
+            worksheet.addRow(rowData);
+            currentRow++;
+          }
+        });
+      }
+      
+      // Auto-fit columns
+      worksheet.columns.forEach(column => {
+        let maxLength = 0;
+        column.eachCell({ includeEmpty: true }, cell => {
+          const columnLength = cell.value ? cell.value.toString().length : 0;
+          if (columnLength > maxLength) {
+            maxLength = columnLength;
+          }
+        });
+        column.width = Math.max(8, Math.min(maxLength + 2, 35));
       });
     });
-    
-    // Auto-fit columns
-    worksheet.columns.forEach((column, index) => {
-      let maxLength = 0;
-      column.eachCell({ includeEmpty: true }, (cell) => {
-        const cellLength = cell.value ? cell.value.toString().length : 0;
-        maxLength = Math.max(maxLength, cellLength);
-      });
-      column.width = Math.min(Math.max(maxLength + 2, 12), 50);
-    });
   }
 
-  normalizeDate(dateString) {
-    // Convert various date formats to standard format
-    const cleaned = dateString.replace(/[-]/g, '/');
-    const parts = cleaned.split('/');
+  async createExcelFile(items, originalFileName) {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('All Data');
+
+    // Group items by line based on their vertical position (transform[5])
+    const lines = this.groupItemsByLine(items);
+
+    // Process each line and add it to the worksheet
+    lines.forEach(line => {
+      let row = [];
+      let lastX = 0;
+      line.items.forEach(item => {
+        // Calculate the number of empty cells to add to simulate spacing
+        const x = item.transform[4];
+        const spaceCount = Math.round((x - lastX) / 10); // 10 is a scaling factor for space width
+        for (let i = 0; i < spaceCount; i++) {
+          row.push('');
+        }
+        row.push(item.str);
+        lastX = x + (item.width);
+      });
+      worksheet.addRow(row);
+    });
     
-    if (parts.length === 3) {
-      // Assuming DD/MM/YYYY format
-      return `${parts[0]}/${parts[1]}/${parts[2]}`;
+    // Auto-fit columns for better readability
+    if (worksheet.columns) {
+      worksheet.columns.forEach(column => {
+          let maxLength = 0;
+          column.eachCell({ includeEmpty: true }, cell => {
+              const columnLength = cell.value ? cell.value.toString().length : 10;
+              if (columnLength > maxLength) {
+                  maxLength = columnLength;
+              }
+          });
+          column.width = maxLength < 10 ? 10 : maxLength;
+      });
     }
-    
-    return dateString;
+
+    return workbook.xlsx.writeBuffer();
   }
 
-  parseAmount(amountString) {
-    if (!amountString) return 0;
-    
-    // Remove commas and parse as float
-    const cleaned = amountString.replace(/,/g, '');
-    const amount = parseFloat(cleaned);
-    
-    return isNaN(amount) ? 0 : amount;
+  groupItemsByLine(items) {
+    if (!items || items.length === 0) {
+      return [];
+    }
+
+    const lines = [];
+    let currentLine = { y: items[0].transform[5], items: [items[0]] };
+
+    for (let i = 1; i < items.length; i++) {
+      const item = items[i];
+      const y = item.transform[5];
+
+      // A small tolerance for items on the same line
+      if (Math.abs(y - currentLine.y) < 5) {
+        currentLine.items.push(item);
+      } else {
+        // Sort items in the current line by their x-coordinate before saving
+        currentLine.items.sort((a, b) => a.transform[4] - b.transform[4]);
+        lines.push(currentLine);
+        currentLine = { y: y, items: [item] };
+      }
+    }
+    // Add the last line
+    currentLine.items.sort((a, b) => a.transform[4] - b.transform[4]);
+    lines.push(currentLine);
+
+    // Sort lines by their y-coordinate
+    return lines.sort((a, b) => b.y - a.y);
   }
 
   generateFileName(originalFileName) {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const baseName = path.basename(originalFileName, path.extname(originalFileName));
-    return `${baseName}_processed_${timestamp}.xlsx`;
+    return `${baseName}_converted_${timestamp}.xlsx`;
   }
 }
 

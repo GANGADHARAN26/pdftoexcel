@@ -3,15 +3,18 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useSession, signIn, signOut } from 'next-auth/react';
-import { Menu, X, FileText, User, LogOut } from 'lucide-react';
+import { Menu, X, FileText } from 'lucide-react';
 
 export default function Header() {
-  const { data: session } = useSession();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
+      {/* Development Mode Banner */}
+      <div className="bg-green-600 text-white text-center py-1 text-sm font-medium">
+        🚀 DEVELOPMENT MODE - Financial PDF AI with OCR & Manual Editor - No limits
+      </div>
+      
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
@@ -19,7 +22,10 @@ export default function Header() {
             <Link href="/" className="flex items-center space-x-2">
               <FileText className="h-8 w-8 text-blue-600" />
               <span className="font-bold text-xl text-gray-900">
-                FinanceConverter
+                FinancePDF.ai
+              </span>
+              <span className="bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded-full ml-2">
+                DEV
               </span>
             </Link>
           </div>
@@ -29,43 +35,15 @@ export default function Header() {
             <Link href="/" className="text-gray-700 hover:text-blue-600 transition-colors">
               Home
             </Link>
+            <Link href="/dashboard" className="text-gray-700 hover:text-blue-600 transition-colors">
+              Dashboard
+            </Link>
             <Link href="/pricing" className="text-gray-700 hover:text-blue-600 transition-colors">
               Pricing
             </Link>
-            {session && (
-              <Link href="/dashboard" className="text-gray-700 hover:text-blue-600 transition-colors">
-                Dashboard
-              </Link>
-            )}
-            
-            {session ? (
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <Image
-                    src={session.user.image || '/default-avatar.png'}
-                    alt={session.user.name || 'User Avatar'}
-                    width={32}
-                    height={32}
-                    className="w-8 h-8 rounded-full"
-                  />
-                  <span className="text-gray-700">{session.user.name}</span>
-                </div>
-                <button
-                  onClick={() => signOut()}
-                  className="flex items-center space-x-1 bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span>Sign Out</span>
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => signIn('google')}
-                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-              >
-                Sign In
-              </button>
-            )}
+            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
+              No Auth Required
+            </span>
           </nav>
 
           {/* Mobile menu button */}
@@ -86,43 +64,15 @@ export default function Header() {
               <Link href="/" className="text-gray-700 hover:text-blue-600">
                 Home
               </Link>
+              <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
+                Dashboard
+              </Link>
               <Link href="/pricing" className="text-gray-700 hover:text-blue-600">
                 Pricing
               </Link>
-              {session && (
-                <Link href="/dashboard" className="text-gray-700 hover:text-blue-600">
-                  Dashboard
-                </Link>
-              )}
-              
-              {session ? (
-                <div className="flex flex-col space-y-2 pt-4 border-t border-gray-200">
-                  <div className="flex items-center space-x-2">
-                    <Image
-                      src={session.user.image || '/default-avatar.png'}
-                      alt={session.user.name || 'User Avatar'}
-                      width={32}
-                      height={32}
-                      className="w-8 h-8 rounded-full"
-                    />
-                    <span className="text-gray-700">{session.user.name}</span>
-                  </div>
-                  <button
-                    onClick={() => signOut()}
-                    className="flex items-center space-x-1 bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors w-fit"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    <span>Sign Out</span>
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => signIn('google')}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors w-fit"
-                >
-                  Sign In
-                </button>
-              )}
+              <div className="bg-green-100 text-green-700 px-3 py-2 rounded-lg text-sm font-medium text-center">
+                🚀 Development Mode - No Authentication Required
+              </div>
             </nav>
           </div>
         )}

@@ -1,12 +1,12 @@
-# FinanceConverter - PDF to Excel Converter
+# PDFConverter - PDF to Excel Converter
 
-A professional-grade finance PDF to Excel converter built with Next.js, featuring user authentication, subscription management, and secure file processing.
+A professional-grade PDF to Excel converter built with Next.js, featuring user authentication, subscription management, and secure file processing.
 
 ## Features
 
 - 🔒 **Secure Authentication** - Google OAuth integration with NextAuth.js
 - 💳 **Subscription Management** - Stripe integration for payments
-- 📊 **Smart PDF Processing** - Advanced algorithms for extracting financial data
+- 📊 **Smart PDF Processing** - Advanced algorithms for extracting structured data
 - 📈 **Usage Analytics** - Track conversions and user statistics
 - 🎨 **Professional UI** - Clean, responsive design with Tailwind CSS
 - 🚀 **Production Ready** - Built with best practices and scalability in mind
@@ -34,7 +34,7 @@ A professional-grade finance PDF to Excel converter built with Next.js, featurin
 1. **Clone the repository**
    ```bash
    git clone <repository-url>
-   cd finance-pdf-to-excel-app
+   cd pdf-to-excel-app
    ```
 
 2. **Install dependencies**

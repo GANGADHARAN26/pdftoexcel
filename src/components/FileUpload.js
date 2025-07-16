@@ -10,7 +10,7 @@ export default function FileUpload({ onUploadComplete }) {
   const { data: session } = useSession();
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState(0); // Kept for potential future use
   const [sessionId] = useState(() => generateSessionId());
   const fileInputRef = useRef(null);
 
@@ -22,9 +22,10 @@ export default function FileUpload({ onUploadComplete }) {
         return;
       }
       
-      const maxSize = 10 * 1024 * 1024; // 10MB
+      // DEVELOPMENT: Increased file size limit to 50MB for testing
+      const maxSize = 50 * 1024 * 1024; // 50MB
       if (selectedFile.size > maxSize) {
-        toast.error('File size must be less than 10MB');
+        toast.error(`File size must be less than ${maxSize / 1024 / 1024}MB`);
         return;
       }
       
@@ -52,44 +53,53 @@ export default function FileUpload({ onUploadComplete }) {
 
     setIsUploading(true);
     setUploadProgress(0);
+    const toastId = toast.loading('Starting conversion...');
 
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('sessionId', sessionId);
 
-      const response = await fetch('/api/upload', {
+      const response = await fetch('/api/process-pdf', {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
+        throw new Error(errorData.error || 'Conversion failed');
       }
 
-      // Get the file blob
+      toast.loading('Downloading results...', { id: toastId });
+
       const blob = await response.blob();
+      const contentDisposition = response.headers.get('content-disposition');
+      let fileName = `${file.name.replace('.pdf', '')}_converted.xlsx`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) {
+          fileName = match[1];
+        }
+      }
       
-      // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${file.name.replace('.pdf', '')}_converted.xlsx`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
-      toast.success('File converted successfully!');
+      toast.success('PDF converted successfully! All data, tables, and content extracted to multiple worksheets.', { id: toastId });
       setFile(null);
       
       if (onUploadComplete) {
-        onUploadComplete();
+        onUploadComplete(sessionId);
       }
     } catch (error) {
-      console.error('Upload error:', error);
-      toast.error(error.message || 'Upload failed');
+      console.error('Conversion error:', error);
+      toast.error(error.message || 'Conversion failed', { id: toastId });
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -117,7 +127,10 @@ export default function FileUpload({ onUploadComplete }) {
             Drop your PDF file here or click to browse
           </p>
           <p className="text-sm text-gray-500">
-            Support for finance PDF files up to 10MB
+            Comprehensive PDF to Excel Converter - Extracts ALL data, tables, and content
+          </p>
+          <p className="text-xs text-blue-600 mt-1">
+            ✓ All text content ✓ Tables detected ✓ Form fields ✓ Multiple worksheets (Max 50MB)
           </p>
           <input
             ref={fileInputRef}
@@ -149,12 +162,11 @@ export default function FileUpload({ onUploadComplete }) {
             <div className="mb-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700">Converting...</span>
-                <span className="text-sm text-gray-500">{uploadProgress}%</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
                   className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${uploadProgress}%` }}
+                  style={{ width: `100%` }} // Indeterminate progress
                 ></div>
               </div>
             </div>
@@ -179,22 +191,6 @@ export default function FileUpload({ onUploadComplete }) {
           </button>
         </div>
       )}
-
-      {/* Usage Information */}
-      <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-        <h3 className="font-medium text-gray-900 mb-2">Usage Limits</h3>
-        <div className="text-sm text-gray-600">
-          {session ? (
-            session.user.isSubscribed ? (
-              <p className="text-green-600">✓ Unlimited conversions (Subscribed)</p>
-            ) : (
-              <p>📄 {session.user.usageStats?.remainingToday || 5} conversions remaining today</p>
-            )
-          ) : (
-            <p>📄 5 free conversions per day (Anonymous)</p>
-          )}
-        </div>
-      </div>
     </div>
   );
 }

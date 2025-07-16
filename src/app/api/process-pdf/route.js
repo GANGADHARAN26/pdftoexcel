@@ -9,7 +9,7 @@ import { generateSessionId, isToday, isCurrentMonth } from '../../../lib/utils';
 
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
+    // DEVELOPMENT MODE: Skip all authentication and restrictions
     const formData = await request.formData();
     const file = formData.get('file');
     const sessionId = formData.get('sessionId') || generateSessionId();
@@ -19,29 +19,23 @@ export async function POST(request) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
-    // Validate file type
     if (file.type !== 'application/pdf') {
       return NextResponse.json({ error: 'Only PDF files are allowed' }, { status: 400 });
     }
 
-    // Validate file size (10MB limit)
-    const maxSize = parseInt(process.env.UPLOAD_MAX_SIZE) || 10485760;
+    // DEVELOPMENT: Increased file size limit to 50MB for testing
+    const maxSize = 50 * 1024 * 1024; // 50MB
     if (file.size > maxSize) {
-      return NextResponse.json({ 
-        error: `File too large. Maximum size is ${Math.round(maxSize / 1024 / 1024)}MB` 
+      return NextResponse.json({
+        error: `File too large. Maximum size is ${Math.round(maxSize / 1024 / 1024)}MB`
       }, { status: 400 });
     }
 
     await connectToMongoDB();
 
-    // Check usage limits
-    const canProcess = await checkUsageLimit(session, sessionId);
-    if (!canProcess.allowed) {
-      return NextResponse.json({ error: canProcess.message }, { status: 429 });
-    }
+    // DEVELOPMENT: Skip usage limit checks
 
-    // Process the PDF
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
+    const fileBuffer = new Uint8Array(await file.arrayBuffer());
     const processor = new EnhancedPDFProcessor();
     const result = await processor.processPDF(fileBuffer, file.name);
 
@@ -49,20 +43,16 @@ export async function POST(request) {
       return NextResponse.json({ error: result.error }, { status: 500 });
     }
 
-    // If preview only, return preview data
     if (previewOnly) {
       return NextResponse.json({
         success: true,
         preview: result.previewData,
-        metadata: result.metadata,
-        bankType: result.bankType,
         processingTime: result.processingTime
       });
     }
 
-    // Record the conversion
     const conversionData = {
-      userId: session?.user?.id || null,
+      userId: null, // DEVELOPMENT: No user tracking
       sessionId,
       originalFileName: file.name,
       fileSize: file.size,
@@ -72,40 +62,33 @@ export async function POST(request) {
       errorMessage: result.error || null,
       ipAddress: request.ip || 'unknown',
       userAgent: request.headers.get('user-agent') || 'unknown',
-      bankType: result.bankType,
-      transactionCount: result.metadata.transactionCount || 0,
-      accountNumber: result.metadata.accountNumber || null,
-      accountHolder: result.metadata.accountHolder || null,
-      statementPeriod: result.metadata.statementPeriod || null,
-      openingBalance: result.metadata.openingBalance || 0,
-      closingBalance: result.metadata.closingBalance || 0,
-      extractionQuality: result.jsonData?.transactions?.length > 0 ? 'high' : 'medium',
-      hasPreview: false
+      extractionQuality: 'high', // Enhanced extraction with all data
+      metadata: {
+        totalTextItems: result.metadata?.totalTextItems || 0,
+        totalTables: result.metadata?.totalTables || 0,
+        totalImages: result.metadata?.totalImages || 0,
+        hasImages: result.metadata?.processingDetails?.hasImages || false,
+        hasTables: result.metadata?.processingDetails?.hasTables || false,
+        extractionType: 'comprehensive_multi_worksheet'
+      }
     };
 
     await Conversion.create(conversionData);
 
-    // Update user usage stats
-    if (session?.user?.id) {
-      await updateUserUsage(session.user.id);
-    }
+    // DEVELOPMENT: Skip user usage tracking
 
-    // Generate filename
     const fileName = processor.generateFileName(file.name);
 
-    // Return the Excel file with metadata
     return new NextResponse(result.excelBuffer, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="${fileName}"`,
-        'X-Bank-Type': result.bankType,
-        'X-Transaction-Count': result.metadata.transactionCount.toString(),
         'X-Processing-Time': result.processingTime.toString()
       },
     });
 
   } catch (error) {
-    console.error('Enhanced PDF processing error:', error);
+    console.error('PDF processing error:', error);
     return NextResponse.json({ 
       error: 'Internal server error', 
       details: process.env.NODE_ENV === 'development' ? error.message : undefined 
@@ -113,10 +96,9 @@ export async function POST(request) {
   }
 }
 
-// Get processing status
 export async function GET(request) {
   try {
-    const session = await getServerSession(authOptions);
+    // DEVELOPMENT MODE: Skip authentication
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
 
@@ -127,14 +109,11 @@ export async function GET(request) {
     await connectToMongoDB();
 
     const recentConversions = await Conversion.find({
-      $or: [
-        { sessionId },
-        { userId: session?.user?.id }
-      ]
+      sessionId // DEVELOPMENT: Only check sessionId, no user filtering
     })
     .sort({ createdAt: -1 })
     .limit(10)
-    .select('originalFileName status createdAt processingTime bankType transactionCount');
+    .select('originalFileName status createdAt processingTime');
 
     return NextResponse.json({
       success: true,
@@ -148,34 +127,11 @@ export async function GET(request) {
 }
 
 async function checkUsageLimit(session, sessionId) {
-  // NOTE: Temporarily disabled for testing purposes.
-  // This will allow unrestricted access.
+  // DEVELOPMENT MODE: Always allow processing
   return { allowed: true };
 }
 
 async function updateUserUsage(userId) {
-  const user = await User.findById(userId);
-  const today = new Date();
-  
-  // Update today's usage
-  if (isToday(user.usageStats.today.date)) {
-    user.usageStats.today.count += 1;
-  } else {
-    user.usageStats.today.count = 1;
-    user.usageStats.today.date = today;
-  }
-
-  // Update monthly usage
-  if (isCurrentMonth(user.usageStats.thisMonth.month, user.usageStats.thisMonth.year)) {
-    user.usageStats.thisMonth.count += 1;
-  } else {
-    user.usageStats.thisMonth.count = 1;
-    user.usageStats.thisMonth.month = today.getMonth();
-    user.usageStats.thisMonth.year = today.getFullYear();
-  }
-
-  // Update total usage
-  user.usageStats.total += 1;
-
-  await user.save();
+  // DEVELOPMENT MODE: Skip user usage tracking
+  return;
 }

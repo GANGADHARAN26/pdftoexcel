@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useCallback, useRef } from 'react';
-import { Upload, FileText, Download, Eye, AlertCircle, CheckCircle, Clock, Landmark } from 'lucide-react';
+import { Upload, FileText, Download, Eye, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const EnhancedFileUpload = ({ sessionId }) => {
+const EnhancedFileUpload = ({ sessionId, user }) => {
   const [file, setFile] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
@@ -13,10 +13,10 @@ const EnhancedFileUpload = ({ sessionId }) => {
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
 
-  const supportedBanks = [
-    'State Bank of India (SBI)', 'HDFC Bank', 'ICICI Bank', 'Axis Bank',
-    'Punjab National Bank (PNB)', 'Kotak Mahindra Bank', 'Canara Bank',
-    'Bank of India', 'Union Bank', 'Federal Bank', 'Commerce Bank'
+  const supportedFormats = [
+    'Tables and structured data', 'Financial documents', 'Reports and statements', 'Forms and applications',
+    'Invoices and receipts', 'Academic documents', 'Legal documents',
+    'Technical specifications', 'Data sheets', 'Business documents', 'Research papers'
   ];
 
   const handleDrag = useCallback((e) => {
@@ -46,8 +46,9 @@ const EnhancedFileUpload = ({ sessionId }) => {
       return;
     }
 
-    if (selectedFile.size > 10 * 1024 * 1024) {
-      toast.error('File size must be less than 10MB');
+    // DEVELOPMENT: Increased file size limit to 50MB for testing
+    if (selectedFile.size > 50 * 1024 * 1024) {
+      toast.error('File size must be less than 50MB');
       return;
     }
 
@@ -129,12 +130,11 @@ const EnhancedFileUpload = ({ sessionId }) => {
         document.body.removeChild(link);
         window.URL.revokeObjectURL(url);
 
-        const bankType = response.headers.get('X-Bank-Type');
-        const transactionCount = response.headers.get('X-Transaction-Count');
         const processingTime = response.headers.get('X-Processing-Time');
 
         toast.success(
-          `Successfully converted! Bank: ${bankType}, Transactions: ${transactionCount}, Time: ${processingTime}ms`
+          `PDF converted successfully! All data, tables, and content extracted to multiple worksheets. Processing time: ${processingTime}ms`,
+          { duration: 5000 }
         );
         
         // Reset form
@@ -161,20 +161,34 @@ const EnhancedFileUpload = ({ sessionId }) => {
       {/* Upload Section */}
       <div className="bg-white rounded-lg shadow-lg p-6">
         <h2 className="text-2xl font-bold text-gray-900 mb-4">
-          Upload Financial PDF
+          Upload PDF Document
         </h2>
+
+        {/* DEVELOPMENT MODE: Enhanced status display */}
+        <div className="mb-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200 rounded-lg">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <CheckCircle className="w-6 h-6 text-green-600" />
+            <span className="font-bold text-green-800 text-xl">DEVELOPMENT MODE</span>
+          </div>
+          <div className="text-center space-y-1">
+            <p className="text-green-700 font-medium">✅ No authentication required</p>
+            <p className="text-blue-700 font-medium">✅ Unlimited conversions</p>
+            <p className="text-purple-700 font-medium">✅ 50MB file size limit</p>
+            <p className="text-orange-700 font-medium">✅ All features unlocked</p>
+          </div>
+        </div>
         
-        {/* Supported Banks Info */}
+        {/* Supported Formats Info */}
         <div className="mb-6 p-4 bg-blue-50 rounded-lg">
           <div className="flex items-center gap-2 mb-2">
-            <Landmark className="w-5 h-5 text-blue-600" />
-            <span className="font-semibold text-blue-900">Supported Banks:</span>
+            <FileText className="w-5 h-5 text-blue-600" />
+            <span className="font-semibold text-blue-900">Supported Document Types:</span>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm text-blue-800">
-            {supportedBanks.map((bank, index) => (
+            {supportedFormats.map((format, index) => (
               <div key={index} className="flex items-center gap-1">
                 <CheckCircle className="w-3 h-3" />
-                {bank}
+                {format}
               </div>
             ))}
           </div>
@@ -207,7 +221,10 @@ const EnhancedFileUpload = ({ sessionId }) => {
                 Drop your PDF file here or click to browse
               </p>
               <p className="text-sm text-gray-500">
-                Supports bank statements, financial documents (Max 10MB)
+                Comprehensive extraction: ALL text, tables, forms, and data → Multiple Excel worksheets (Max 50MB)
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                ✓ Complete data extraction ✓ Table detection ✓ Form fields ✓ Multi-worksheet output
               </p>
             </div>
           </div>
@@ -259,17 +276,17 @@ const EnhancedFileUpload = ({ sessionId }) => {
         )}
       </div>
 
-      {/* Preview Section */}
+      {/* Enhanced Preview Section */}
       {preview && (
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-xl font-bold text-gray-900 mb-4">Document Preview</h3>
+          <h3 className="text-xl font-bold text-gray-900 mb-4">📊 Complete Data Extraction Preview</h3>
           
-          {/* Bank Detection */}
+          {/* Processing Status */}
           <div className="mb-6 p-4 bg-green-50 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle className="w-5 h-5 text-green-600" />
               <span className="font-semibold text-green-900">
-                Detected Bank: {preview.bankType}
+                Document processed successfully - ALL DATA EXTRACTED
               </span>
             </div>
             <div className="text-sm text-green-800">
@@ -277,99 +294,133 @@ const EnhancedFileUpload = ({ sessionId }) => {
             </div>
           </div>
 
-          {/* Account Information */}
-          <div className="grid md:grid-cols-2 gap-6 mb-6">
-            <div className="space-y-3">
-              <h4 className="font-semibold text-gray-900">Account Information</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Account Number:</span>
-                  <span className="font-medium">{preview.metadata.accountNumber || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Account Holder:</span>
-                  <span className="font-medium">{preview.metadata.accountHolder || 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Statement Period:</span>
-                  <span className="font-medium">{preview.metadata.statementPeriod || 'N/A'}</span>
-                </div>
+          {/* Extraction Summary */}
+          {preview?.preview && (
+            <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-blue-50 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-blue-600">{preview.preview.totalPages || 0}</div>
+                <div className="text-sm text-blue-800">Pages</div>
+              </div>
+              <div className="bg-green-50 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-green-600">{preview.preview.totalTextItems || 0}</div>
+                <div className="text-sm text-green-800">Text Items</div>
+              </div>
+              <div className="bg-purple-50 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-purple-600">{preview.preview.totalTables || 0}</div>
+                <div className="text-sm text-purple-800">Tables</div>
+              </div>
+              <div className="bg-orange-50 p-4 rounded-lg text-center">
+                <div className="text-2xl font-bold text-orange-600">{preview.preview.totalImages || 0}</div>
+                <div className="text-sm text-orange-800">Images</div>
               </div>
             </div>
+          )}
 
-            <div className="space-y-3">
-              <h4 className="font-semibold text-gray-900">Summary</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Transactions:</span>
-                  <span className="font-medium">{preview.metadata.transactionCount}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Opening Balance:</span>
-                  <span className="font-medium">₹{preview.metadata.openingBalance?.toLocaleString() || '0'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Closing Balance:</span>
-                  <span className="font-medium">₹{preview.metadata.closingBalance?.toLocaleString() || '0'}</span>
+          {/* Sample Content Preview */}
+          {preview?.preview?.sampleContent && preview.preview.sampleContent.length > 0 && (
+            <div className="mb-6">
+              <h4 className="font-semibold text-gray-900 mb-3">📄 Sample Extracted Content</h4>
+              <div className="p-4 bg-gray-50 rounded-lg max-h-60 overflow-y-auto">
+                <div className="space-y-1">
+                  {preview.preview.sampleContent.map((text, index) => (
+                    <div key={index} className="text-sm text-gray-700 border-b border-gray-200 pb-1">
+                      <span className="text-xs text-gray-500 mr-2">[{index + 1}]</span>
+                      {text}
+                    </div>
+                  ))}
                 </div>
               </div>
+              <p className="text-sm text-gray-500 mt-2">
+                ✅ This is a sample of the extracted text content. The full Excel file will contain ALL data.
+              </p>
+            </div>
+          )}
+
+          {/* Table Preview */}
+          {preview?.preview?.tablePreview && preview.preview.tablePreview.length > 0 && (
+            <div className="mb-6">
+              <h4 className="font-semibold text-gray-900 mb-3">📋 Detected Table Preview</h4>
+              <div className="p-4 bg-blue-50 rounded-lg">
+                <div className="space-y-2">
+                  {preview.preview.tablePreview.map((row, index) => (
+                    <div key={index} className="text-sm font-mono text-blue-800 border-b border-blue-200 pb-1">
+                      <span className="text-xs text-blue-500 mr-2">Row {index + 1}:</span>
+                      {row}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <p className="text-sm text-gray-500 mt-2">
+                ✅ Tables detected and will be extracted to separate Excel worksheets with proper formatting.
+              </p>
+            </div>
+          )}
+
+          {/* Extraction Quality Indicators */}
+          <div className="mb-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg">
+            <h4 className="font-semibold text-gray-900 mb-3">🎯 Extraction Quality Report</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-500" />
+                <span className={preview?.preview?.extractionSummary?.hasText ? 'text-green-700' : 'text-gray-500'}>
+                  Text Content
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-500" />
+                <span className={preview?.preview?.extractionSummary?.hasTables ? 'text-green-700' : 'text-gray-500'}>
+                  Table Data
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-500" />
+                <span className={preview?.preview?.extractionSummary?.hasImages ? 'text-green-700' : 'text-gray-500'}>
+                  Images Detected
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-500" />
+                <span className={preview?.preview?.extractionSummary?.hasFormFields ? 'text-green-700' : 'text-gray-500'}>
+                  Form Fields
+                </span>
+              </div>
+            </div>
+            <div className="mt-3 p-2 bg-white rounded border">
+              <span className="text-sm font-medium text-gray-700">
+                Completeness: {preview?.preview?.extractionSummary?.completeness || 'comprehensive'}
+              </span>
             </div>
           </div>
 
-          {/* Sample Transactions */}
-          {preview.preview.transactionSample && preview.preview.transactionSample.length > 0 && (
-            <div>
-              <h4 className="font-semibold text-gray-900 mb-3">Sample Transactions</h4>
-              <div className="overflow-x-auto">
-                <table className="min-w-full border border-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Debit</th>
-                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Credit</th>
-                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {preview.preview.transactionSample.slice(0, 5).map((transaction, index) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 text-sm text-gray-900">{transaction.date}</td>
-                        <td className="px-4 py-2 text-sm text-gray-900 max-w-xs truncate">
-                          {transaction.description}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-gray-900 text-right">
-                          {transaction.debit ? `₹${transaction.debit.toLocaleString()}` : '-'}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-gray-900 text-right">
-                          {transaction.credit ? `₹${transaction.credit.toLocaleString()}` : '-'}
-                        </td>
-                        <td className="px-4 py-2 text-sm text-gray-900 text-right">
-                          ₹{transaction.balance.toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {preview.preview.totalTransactions > 5 && (
-                <p className="text-sm text-gray-500 mt-2">
-                  Showing 5 of {preview.preview.totalTransactions} transactions
-                </p>
+          {/* Excel Output Preview */}
+          <div className="mb-6 p-4 bg-yellow-50 rounded-lg">
+            <h4 className="font-semibold text-gray-900 mb-3">📊 Excel Output Structure</h4>
+            <div className="text-sm text-gray-700 space-y-1">
+              <div>✅ <strong>Summary Sheet:</strong> Overview and statistics</div>
+              <div>✅ <strong>All Data Sheet:</strong> Complete content with original layout</div>
+              {preview?.preview?.totalTables > 0 && (
+                <div>✅ <strong>Table Sheets:</strong> {preview.preview.totalTables} separate table(s) with proper formatting</div>
               )}
+              {preview?.preview?.totalFormFields > 0 && (
+                <div>✅ <strong>Form Fields Sheet:</strong> All form data extracted</div>
+              )}
+              <div>✅ <strong>Page-by-Page Sheets:</strong> Detailed content for each page</div>
             </div>
-          )}
+          </div>
 
           {/* Convert Button */}
           <div className="mt-6 pt-4 border-t">
             <button
               onClick={processFile}
               disabled={isProcessing}
-              className="w-full flex items-center justify-center gap-2 px-6 py-3 text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 font-medium"
+              className="w-full flex items-center justify-center gap-2 px-6 py-3 text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50 font-medium text-lg"
             >
               <Download className="w-5 h-5" />
-              {isProcessing ? 'Converting...' : 'Convert to Excel'}
+              {isProcessing ? 'Converting All Data to Excel...' : 'Convert to Excel - ALL DATA INCLUDED'}
             </button>
+            <p className="text-center text-sm text-gray-500 mt-2">
+              Your Excel file will contain multiple worksheets with ALL extracted data, tables, and content.
+            </p>
           </div>
         </div>
       )}
