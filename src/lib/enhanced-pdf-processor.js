@@ -1,14 +1,5 @@
-// Promise.withResolvers polyfill for PDF.js compatibility
-if (typeof Promise.withResolvers === "undefined") {
-  Promise.withResolvers = function () {
-    let resolve, reject;
-    const promise = new Promise((res, rej) => {
-      resolve = res;
-      reject = rej;
-    });
-    return { promise, resolve, reject };
-  };
-}
+// Load polyfills first
+import "./polyfills.js";
 
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import ExcelJS from "exceljs";

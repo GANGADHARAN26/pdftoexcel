@@ -4,7 +4,18 @@ import React, { useState, useCallback, useRef } from "react";
 
 import toast from "react-hot-toast";
 import ExcelJS from "exceljs";
-import { Check, Copy, Download, Grid, Minus, Plus, RotateCcw, Save, X,   ClipboardCopy } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Download,
+  Grid,
+  Minus,
+  Plus,
+  RotateCcw,
+  Save,
+  X,
+  ClipboardCopy,
+} from "lucide-react";
 
 const ManualTableEditor = ({
   initialData = null,
@@ -200,7 +211,7 @@ const ManualTableEditor = ({
         toast.success(`${template.name} template loaded!`);
       }
     },
-    [saveToUndoStack]
+    [saveToUndoStack, financialTemplates]
   );
 
   const exportToExcel = useCallback(async () => {
