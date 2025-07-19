@@ -1,11 +1,13 @@
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { createWorker } from 'tesseract.js';
 import { fromPath } from 'pdf2pic';
+import { pdfToPng } from 'pdf-to-png-converter';
 import sharp from 'sharp';
 import ExcelJS from 'exceljs';
 import path from 'path';
 import fs from 'fs';
 import { pathToFileURL } from 'url';
+import { createCanvas } from 'canvas';
 
 if (typeof window === 'undefined') {
   const workerPath = path.join(process.cwd(), 'public', 'pdf.worker.mjs');
@@ -20,6 +22,19 @@ export class AdvancedPDFProcessor {
     this.debugMode = process.env.NODE_ENV === 'development';
     this.ocrWorker = null;
     this.financialPatterns = this.initializeFinancialPatterns();
+    this.processStartTime = Date.now();
+  }
+
+  logMemoryUsage(context = '') {
+    if (this.debugMode) {
+      const memUsage = process.memoryUsage();
+      console.log(`Memory Usage ${context}:`, {
+        rss: `${Math.round(memUsage.rss / 1024 / 1024)} MB`,
+        heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)} MB`,
+        heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)} MB`,
+        external: `${Math.round(memUsage.external / 1024 / 1024)} MB`
+      });
+    }
   }
 
   ensureUploadDir() {
@@ -93,21 +108,80 @@ export class AdvancedPDFProcessor {
   }
 
   async initializeOCR() {
-    if (!this.ocrWorker) {
+    // Always create a fresh worker to avoid EOF errors
+    if (this.ocrWorker) {
       try {
-        this.ocrWorker = await createWorker('eng');
-        await this.ocrWorker.setParameters({
-          tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,()-/$%: ',
-          tessedit_pageseg_mode: '1', // Automatic page segmentation with OSD
-          preserve_interword_spaces: '1'
-        });
-        console.log('OCR worker initialized successfully');
+        await this.ocrWorker.terminate();
       } catch (error) {
-        console.error('OCR initialization failed:', error);
-        throw new Error('OCR initialization failed. Please try manual extraction.');
+        console.warn('Error terminating existing OCR worker:', error);
       }
+      this.ocrWorker = null;
     }
+
+    try {
+      if (this.debugMode) {
+        console.log('Initializing fresh OCR worker...');
+      }
+      
+      // Create OCR worker with proper configuration for server-side execution
+      this.ocrWorker = await createWorker({
+        logger: this.debugMode ? m => console.log(m) : undefined,
+        errorHandler: (error) => {
+          console.error('OCR Worker Error:', error);
+        }
+      });
+      
+      await this.ocrWorker.load();
+      await this.ocrWorker.loadLanguage('eng');
+      await this.ocrWorker.initialize('eng');
+      await this.ocrWorker.setParameters({
+        tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,()-/$%: ',
+        tessedit_pageseg_mode: '3', // PSM_AUTO - better for tables/mixed content
+        preserve_interword_spaces: '1'
+      });
+      
+      console.log('Tesseract.js OCR worker initialized successfully.');
+    } catch (error) {
+      console.error('OCR initialization failed:', error);
+      this.ocrWorker = null;
+      throw new Error(`OCR initialization failed: ${error.message}. Please try manual extraction.`);
+    }
+    
     return this.ocrWorker;
+  }
+
+  async validatePDF(fileBuffer) {
+    try {
+      // Basic PDF validation
+      if (!fileBuffer || fileBuffer.length === 0) {
+        throw new Error('Empty file buffer');
+      }
+      
+      // Check PDF header
+      const header = fileBuffer.slice(0, 5).toString();
+      if (!header.startsWith('%PDF-')) {
+        throw new Error('Invalid PDF header');
+      }
+      
+      // Try to load with PDF.js for validation
+      const pdfData = fileBuffer instanceof Buffer ? new Uint8Array(fileBuffer) : fileBuffer;
+      const pdf = await pdfjsLib.getDocument({
+        data: pdfData,
+        verbosity: 0
+      }).promise;
+      
+      const numPages = pdf.numPages;
+      if (numPages === 0) {
+        throw new Error('PDF has no pages');
+      }
+      
+      console.log(`PDF validation successful: ${numPages} pages`);
+      return { valid: true, numPages };
+      
+    } catch (error) {
+      console.error('PDF validation failed:', error);
+      return { valid: false, error: error.message };
+    }
   }
 
   async processPDF(fileBuffer, originalFileName) {
@@ -115,6 +189,12 @@ export class AdvancedPDFProcessor {
     let processingMethod = 'unknown';
     
     try {
+      // Validate PDF first
+      const validation = await this.validatePDF(fileBuffer);
+      if (!validation.valid) {
+        throw new Error(`Invalid PDF file: ${validation.error}`);
+      }
+      
       // First, try standard PDF text extraction
       const textResult = await this.tryTextExtraction(fileBuffer, originalFileName);
       
@@ -146,8 +226,11 @@ export class AdvancedPDFProcessor {
 
   async tryTextExtraction(fileBuffer, originalFileName) {
     try {
+      // Convert Buffer to Uint8Array if needed
+      const pdfData = fileBuffer instanceof Buffer ? new Uint8Array(fileBuffer) : fileBuffer;
+      
       const pdf = await pdfjsLib.getDocument({
-        data: fileBuffer,
+        data: pdfData,
         useSystemFonts: true,
         disableFontFace: false,
         verbosity: 0
@@ -228,27 +311,181 @@ export class AdvancedPDFProcessor {
     };
   }
 
-  async processImageBasedPDF(fileBuffer, originalFileName) {
-    const startTime = Date.now();
-    
+  async convertPDFToImages(fileBuffer, originalFileName) {
+    const tempDir = path.join(process.cwd(), 'temp');
+    const timestamp = Date.now();
+    const sanitizedFileName = originalFileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+    let tempFilePath = null;
+    let pageImages = [];
+
     try {
-      // Convert PDF to images
-      const tempFilePath = path.join(process.cwd(), 'temp', `${Date.now()}_${originalFileName}`);
-      fs.writeFileSync(tempFilePath, fileBuffer);
+      // Method 1: Try pdf-to-png-converter (no external dependencies)
+      console.log('Attempting PDF to image conversion using pdf-to-png-converter...');
+      try {
+        const pngPages = await pdfToPng(fileBuffer, {
+          outputFolder: tempDir,
+          outputFileMask: `page_${timestamp}`,
+          viewportScale: 2.0,
+          pagesToProcess: -1, // All pages
+          strictPagesToProcess: false,
+          verbosityLevel: 0
+        });
+
+        pageImages = pngPages.map((page, index) => ({
+          name: `page_${timestamp}.${index + 1}.png`,
+          path: page.path,
+          page: index + 1
+        }));
+
+        if (pageImages.length > 0) {
+          console.log(`Successfully converted ${pageImages.length} pages using pdf-to-png-converter`);
+          return pageImages;
+        }
+      } catch (pngConverterError) {
+        console.warn('pdf-to-png-converter failed:', pngConverterError.message);
+      }
+
+      // Method 2: Try PDF.js with Canvas (fallback)
+      console.log('Attempting PDF to image conversion using PDF.js with Canvas...');
+      try {
+        pageImages = await this.convertPDFWithCanvas(fileBuffer, tempDir, timestamp);
+        if (pageImages.length > 0) {
+          console.log(`Successfully converted ${pageImages.length} pages using PDF.js + Canvas`);
+          return pageImages;
+        }
+      } catch (canvasError) {
+        console.warn('PDF.js + Canvas conversion failed:', canvasError.message);
+      }
+
+      // Method 3: Try pdf2pic as last resort
+      console.log('Attempting PDF to image conversion using pdf2pic...');
+      tempFilePath = path.join(tempDir, `${timestamp}_${sanitizedFileName}`);
+      
+      try {
+        fs.writeFileSync(tempFilePath, fileBuffer);
+        console.log(`Temporary PDF file created: ${tempFilePath}`);
+      } catch (writeError) {
+        throw new Error(`Failed to write temporary PDF file: ${writeError.message}`);
+      }
       
       const convert = fromPath(tempFilePath, {
         density: 300,
-        saveFilename: 'page',
-        savePath: path.join(process.cwd(), 'temp'),
+        saveFilename: `page_${timestamp}`,
+        savePath: tempDir,
         format: 'png',
         width: 2480,
         height: 3508
       });
       
-      const pageImages = await convert.bulk(-1);
+      try {
+        pageImages = await convert.bulk(-1);
+        console.log(`Converted ${pageImages?.length || 0} pages using pdf2pic`);
+        
+        if (pageImages && pageImages.length > 0) {
+          return pageImages;
+        }
+      } catch (conversionError) {
+        throw new Error(`All PDF to image conversion methods failed. Last error: ${conversionError.message}`);
+      }
       
-      // Initialize OCR
-      const ocrWorker = await this.initializeOCR();
+      throw new Error('Failed to convert PDF pages to images - no pages generated');
+
+    } finally {
+      // Cleanup temp PDF file if created
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
+        try {
+          fs.unlinkSync(tempFilePath);
+        } catch (cleanupError) {
+          console.error(`Failed to cleanup temp PDF file: ${cleanupError.message}`);
+        }
+      }
+    }
+  }
+
+  async convertPDFWithCanvas(fileBuffer, tempDir, timestamp) {
+    const pageImages = [];
+    
+    try {
+      // Convert Buffer to Uint8Array if needed
+      const pdfData = fileBuffer instanceof Buffer ? new Uint8Array(fileBuffer) : fileBuffer;
+      
+      const pdf = await pdfjsLib.getDocument({
+        data: pdfData,
+        useSystemFonts: true,
+        disableFontFace: false,
+        verbosity: 0
+      }).promise;
+      
+      const numPages = pdf.numPages;
+      console.log(`PDF has ${numPages} pages, converting with Canvas...`);
+      
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 2.0 });
+        
+        // Create canvas
+        const canvas = createCanvas(viewport.width, viewport.height);
+        const context = canvas.getContext('2d');
+        
+        // Render page to canvas
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport
+        };
+        
+        await page.render(renderContext).promise;
+        
+        // Save canvas as PNG
+        const imagePath = path.join(tempDir, `page_${timestamp}_${pageNum}.png`);
+        const buffer = canvas.toBuffer('image/png');
+        fs.writeFileSync(imagePath, buffer);
+        
+        pageImages.push({
+          name: `page_${timestamp}_${pageNum}.png`,
+          path: imagePath,
+          page: pageNum
+        });
+      }
+      
+      return pageImages;
+      
+    } catch (error) {
+      console.error('Canvas conversion error:', error);
+      throw error;
+    }
+  }
+
+  async processImageBasedPDF(fileBuffer, originalFileName) {
+    const startTime = Date.now();
+    let pageImages = [];
+    
+    this.logMemoryUsage('before OCR processing');
+    
+    try {
+      // Convert PDF to images using fallback methods
+      pageImages = await this.convertPDFToImages(fileBuffer, originalFileName);
+      
+      // Initialize OCR with retry mechanism
+      let ocrWorker;
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          this.logMemoryUsage(`before OCR init attempt ${retryCount + 1}`);
+          ocrWorker = await this.initializeOCR();
+          this.logMemoryUsage(`after OCR init attempt ${retryCount + 1}`);
+          break;
+        } catch (error) {
+          retryCount++;
+          console.warn(`OCR initialization attempt ${retryCount} failed:`, error.message);
+          if (retryCount >= maxRetries) {
+            throw new Error(`OCR initialization failed after ${maxRetries} attempts: ${error.message}`);
+          }
+          // Wait before retry with exponential backoff
+          await new Promise(resolve => setTimeout(resolve, 2000 * retryCount));
+        }
+      }
       
       let allPageData = [];
       let totalTextItems = 0;
@@ -259,9 +496,51 @@ export class AdvancedPDFProcessor {
       // Process each page with OCR
       for (let i = 0; i < pageImages.length; i++) {
         const pageImage = pageImages[i];
-        const pageData = await this.extractOCRPageData(pageImage.path, i + 1, ocrWorker);
-        allPageData.push(pageData);
-        totalTextItems += pageData.textItems.length;
+        try {
+          const pageData = await this.extractOCRPageData(pageImage.path, i + 1, ocrWorker);
+          allPageData.push(pageData);
+          totalTextItems += pageData.textItems.length;
+          
+          // Check if worker failed and needs reinitialization
+          if (pageData.extractionMethod === 'ocr-failed' && pageData.error && 
+              (pageData.error.includes('EOF') || pageData.error.includes('worker'))) {
+            console.warn(`Worker may be corrupted, reinitializing for remaining pages...`);
+            try {
+              await this.cleanup();
+              ocrWorker = await this.initializeOCR();
+            } catch (reinitError) {
+              console.error('Failed to reinitialize OCR worker:', reinitError);
+              // Continue with failed worker - better than stopping completely
+            }
+          }
+          
+        } catch (pageError) {
+          console.error(`Error processing page ${i + 1}:`, pageError);
+          
+          // Check if it's a worker communication error
+          if (pageError.message.includes('EOF') || pageError.message.includes('write') || pageError.code === 'EOF') {
+            console.warn(`Worker communication error on page ${i + 1}, attempting to reinitialize...`);
+            try {
+              await this.cleanup();
+              ocrWorker = await this.initializeOCR();
+            } catch (reinitError) {
+              console.error('Failed to reinitialize OCR worker:', reinitError);
+            }
+          }
+          
+          // Add empty page data to maintain page numbering
+          allPageData.push({
+            pageNumber: i + 1,
+            textItems: [],
+            tables: [],
+            images: [],
+            formFields: [],
+            ocrText: '',
+            lines: [],
+            extractionMethod: 'ocr-failed',
+            error: pageError.message
+          });
+        }
       }
 
       // Detect document type
@@ -273,14 +552,6 @@ export class AdvancedPDFProcessor {
 
       // Create detailed preview
       const previewData = this.generateFinancialPreview(allPageData, documentType);
-
-      // Cleanup temp files
-      fs.unlinkSync(tempFilePath);
-      pageImages.forEach(img => {
-        if (fs.existsSync(img.path)) {
-          fs.unlinkSync(img.path);
-        }
-      });
 
       return {
         success: true,
@@ -309,50 +580,132 @@ export class AdvancedPDFProcessor {
         processingMethod: 'ocr-extraction',
         requiresManualExtraction: true
       };
+    } finally {
+      // Cleanup temp files with better error handling
+      const filesToCleanup = [];
+      
+      pageImages.forEach(img => {
+        if (img && img.path && fs.existsSync(img.path)) {
+          filesToCleanup.push(img.path);
+        }
+      });
+      
+      for (const filePath of filesToCleanup) {
+        try {
+          fs.unlinkSync(filePath);
+          console.log(`Cleaned up temp file: ${filePath}`);
+        } catch (cleanupError) {
+          console.error(`Failed to cleanup file ${filePath}:`, cleanupError);
+        }
+      }
+      
+      // Ensure OCR worker is cleaned up
+      try {
+        await this.cleanup();
+      } catch (workerCleanupError) {
+        console.error('OCR worker cleanup error:', workerCleanupError);
+      }
     }
   }
 
   async extractOCRPageData(imagePath, pageNumber, ocrWorker) {
-    try {
-      const { data: { text, lines, words } } = await ocrWorker.recognize(imagePath);
-      
-      // Process OCR results into structured data
-      const textItems = words.map((word, index) => ({
-        text: word.text,
-        confidence: word.confidence,
-        x: word.bbox.x0,
-        y: word.bbox.y0,
-        width: word.bbox.x1 - word.bbox.x0,
-        height: word.bbox.y1 - word.bbox.y0,
-        index
-      })).filter(item => item.text.trim().length > 0 && item.confidence > 60);
+    let retryCount = 0;
+    const maxRetries = 2;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        // Check if image file exists
+        if (!fs.existsSync(imagePath)) {
+          throw new Error(`Image file not found: ${imagePath}`);
+        }
+        
+        // Verify worker is still valid
+        if (!ocrWorker) {
+          throw new Error('OCR worker is not available');
+        }
+        
+        // Add timeout to OCR recognition with shorter timeout for retries
+        const timeout = retryCount === 0 ? 30000 : 15000;
+        const recognitionPromise = ocrWorker.recognize(imagePath);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('OCR recognition timeout')), timeout)
+        );
+        
+        const result = await Promise.race([
+          recognitionPromise,
+          timeoutPromise
+        ]);
+        
+        // Validate result structure
+        if (!result || !result.data) {
+          throw new Error('Invalid OCR result structure');
+        }
+        
+        const { text, lines, words } = result.data;
+        
+        // Process OCR results into structured data with better error handling
+        const textItems = (words || [])
+          .filter(word => word && word.text && word.bbox && word.confidence > 60)
+          .map((word, index) => ({
+            text: word.text.trim(),
+            confidence: word.confidence,
+            x: word.bbox.x0 || 0,
+            y: word.bbox.y0 || 0,
+            width: (word.bbox.x1 || 0) - (word.bbox.x0 || 0),
+            height: (word.bbox.y1 || 0) - (word.bbox.y0 || 0),
+            index
+          }))
+          .filter(item => item.text.length > 0);
 
-      // Detect tables from OCR data
-      const tables = this.detectTablesFromOCR(textItems);
-      
-      return {
-        pageNumber,
-        textItems,
-        tables,
-        images: [{ type: 'scanned_page', path: imagePath }],
-        formFields: [],
-        ocrText: text,
-        lines: lines.map(line => line.text),
-        extractionMethod: 'ocr'
-      };
-    } catch (error) {
-      console.error(`OCR error for page ${pageNumber}:`, error);
-      return {
-        pageNumber,
-        textItems: [],
-        tables: [],
-        images: [],
-        formFields: [],
-        ocrText: '',
-        lines: [],
-        extractionMethod: 'ocr-failed'
-      };
+        // Detect tables from OCR data
+        const tables = this.detectTablesFromOCR(textItems);
+        
+        return {
+          pageNumber,
+          textItems,
+          tables,
+          images: [{ type: 'scanned_page', path: imagePath }],
+          formFields: [],
+          ocrText: text || '',
+          lines: (lines || []).map(line => line.text || '').filter(line => line.trim().length > 0),
+          extractionMethod: 'ocr'
+        };
+        
+      } catch (error) {
+        retryCount++;
+        console.error(`OCR error for page ${pageNumber} (attempt ${retryCount}):`, error);
+        
+        // Check for specific EOF or worker communication errors
+        if (error.message.includes('EOF') || error.message.includes('write') || error.code === 'EOF') {
+          console.warn(`Worker communication error detected for page ${pageNumber}, attempt ${retryCount}`);
+          
+          if (retryCount <= maxRetries) {
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            continue;
+          }
+        }
+        
+        // If max retries reached or non-recoverable error, return failed page data
+        if (retryCount > maxRetries) {
+          console.error(`Max retries reached for page ${pageNumber}`);
+          break;
+        }
+      }
     }
+    
+    // Return failed page data
+    return {
+      pageNumber,
+      textItems: [],
+      tables: [],
+      images: [],
+      formFields: [],
+      ocrText: '',
+      lines: [],
+      extractionMethod: 'ocr-failed',
+      error: 'OCR processing failed after retries'
+    };
   }
 
   detectTablesFromOCR(textItems) {
@@ -907,10 +1260,42 @@ export class AdvancedPDFProcessor {
     });
   }
 
+  async reinitializeOCR() {
+    console.log('Reinitializing OCR worker...');
+    await this.cleanup();
+    return await this.initializeOCR();
+  }
+
+  async isWorkerHealthy(worker) {
+    if (!worker) return false;
+    
+    try {
+      // Try a simple operation to check if worker is responsive
+      // This is a lightweight check
+      return true; // For now, assume worker is healthy if it exists
+    } catch (error) {
+      console.warn('Worker health check failed:', error);
+      return false;
+    }
+  }
+
   async cleanup() {
     if (this.ocrWorker) {
-      await this.ocrWorker.terminate();
-      this.ocrWorker = null;
+      try {
+        // Add timeout to worker termination to prevent hanging
+        const terminationPromise = this.ocrWorker.terminate();
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Worker termination timeout')), 5000)
+        );
+        
+        await Promise.race([terminationPromise, timeoutPromise]);
+        console.log('OCR worker terminated successfully');
+      } catch (error) {
+        console.error('Error terminating OCR worker:', error);
+        // Force cleanup even if termination fails
+      } finally {
+        this.ocrWorker = null;
+      }
     }
   }
 }

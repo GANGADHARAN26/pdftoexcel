@@ -108,16 +108,45 @@ export async function POST(request) {
     
     const processingTime = Date.now() - startTime;
     
-    // Check if it's an OCR-related error
-    if (error.message.includes('OCR') || error.message.includes('tesseract') || error.message.includes('pdf2pic')) {
+    // Check if it's an OCR-related error or EOF error
+    if (error.message.includes('OCR') || error.message.includes('tesseract') || 
+        error.message.includes('pdf2pic') || error.message.includes('EOF') || 
+        error.code === 'EOF') {
       return NextResponse.json(
         { 
-          error: 'OCR processing failed. The document may be too complex or corrupted.',
+          error: 'OCR processing failed due to worker communication error. The document may be too complex or corrupted.',
           requiresManualExtraction: true,
           processingTime,
-          suggestion: 'Try using manual extraction mode for this document.'
+          suggestion: 'Try using manual extraction mode for this document or try again with a smaller file.'
         },
         { status: 500 }
+      );
+    }
+
+    // Check if it's a PDF conversion error
+    if (error.message.includes('PDF to image conversion failed') || 
+        error.message.includes('All PDF to image conversion methods failed')) {
+      return NextResponse.json(
+        { 
+          error: 'Failed to convert PDF to images for OCR processing. The PDF may be corrupted or use unsupported features.',
+          requiresManualExtraction: true,
+          processingTime,
+          suggestion: 'Try using text extraction mode or manual extraction for this document.'
+        },
+        { status: 500 }
+      );
+    }
+
+    // Check if it's a PDF validation error
+    if (error.message.includes('Invalid PDF file') || error.message.includes('PDF validation')) {
+      return NextResponse.json(
+        { 
+          error: 'The uploaded file is not a valid PDF or is corrupted.',
+          requiresManualExtraction: false,
+          processingTime,
+          suggestion: 'Please ensure the file is a valid PDF and try uploading again.'
+        },
+        { status: 400 }
       );
     }
     
